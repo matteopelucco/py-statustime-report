@@ -19,6 +19,14 @@ def classify(df, cfg):
     return df.apply(one, axis=1)
 
 
+def period_bounds(cfg):
+    """(inizio, fine) del periodo di estrazione dalla config; None dove non configurato."""
+    start, end = cfg.get("period_start"), cfg.get("period_end")
+    start = pd.Timestamp(start) if start else None
+    end = pd.Timestamp(end) + pd.Timedelta(days=1) - pd.Timedelta(minutes=1) if end else None
+    return start, end
+
+
 def prepare(df, ev, cfg):
     """Un record per item con data di produzione, lead time e flag di inclusione."""
     done = ev[ev.status == cfg["done_status"]].copy()
@@ -43,12 +51,20 @@ def prepare(df, ev, cfg):
 
     it["excl_reason"] = ""
     it.loc[it["Issue Type"].isin(cfg["exclude_issue_types"]), "excl_reason"] = "tipo escluso"
-    m = (it.excl_reason == "") & ~it.Resolution.isin(cfg["include_resolutions"])
+    ok_res = it.Resolution.isin(cfg["include_resolutions"]) | (
+        it.Resolution.isin(cfg.get("default_resolutions", [])) & (it.Status == cfg["done_status"]))
+    m = (it.excl_reason == "") & ~ok_res
     it.loc[m, "excl_reason"] = "resolution scartata"
     m = (it.excl_reason == "") & it.prod_date.isna()
     it.loc[m, "excl_reason"] = np.where(it.loc[m, "Key"].isin(only_bulk), "chiuso solo da bonifica", "mai in Done")
     m = (it.excl_reason == "") & (it.lead_days < 0)
     it.loc[m, "excl_reason"] = "date incoerenti"
+    p_start, p_end = period_bounds(cfg)
+    m = it.excl_reason == ""
+    if p_start is not None:
+        it.loc[m & (it.prod_date < p_start), "excl_reason"] = "fuori periodo"
+    if p_end is not None:
+        it.loc[m & (it.prod_date > p_end), "excl_reason"] = "fuori periodo"
     it["valid"] = it.excl_reason == ""
     it.attrs["bulk_days"] = sorted(str(d) for d in bulk_days)
     return it
@@ -65,11 +81,15 @@ def forecast(it, cfg, today):
     classes = sorted(v["class"].unique()) + ["TUTTI"]
     for w in cfg["windows_months"]:
         start = today - pd.DateOffset(months=w)
+        p_start = period_bounds(cfg)[0]
+        if p_start is not None:
+            start = max(start, p_start)
         vw = v[v.prod_date >= start]
         for c in classes:
             s = vw if c == "TUTTI" else vw[vw["class"] == c]
             d = s.lead_days.dropna()
-            r = {"window": w, "class": c, "n": len(d), "reliable": len(d) >= cfg["min_samples"]}
+            r = {"window": w, "class": c, "n": len(d), "reliable": len(d) >= cfg["min_samples"],
+             "from": start.strftime("%d/%m/%Y")}
             r.update(_pct(d, cfg["percentiles"]))
             for n in cfg["within_days"]:
                 r[f"<= {n}g"] = float((d <= n).mean()) if len(d) else np.nan
@@ -78,23 +98,37 @@ def forecast(it, cfg, today):
     return pd.DataFrame(rows)
 
 
+def _trend_months(cfg, today):
+    """Tutti i mesi della finestra di trend, anche quelli senza consegne (altrimenti spariscono dal grafico)."""
+    start = (today - pd.DateOffset(months=cfg["trend_months"])).to_period("M")
+    p_start, p_end = period_bounds(cfg)
+    if p_start is not None:
+        start = max(start, p_start.to_period("M"))
+    end = min(today, p_end) if p_end is not None else today
+    return pd.period_range(start=start, end=end.to_period("M"), freq="M")
+
+
 def monthly_throughput(it, cfg, today):
+    months = _trend_months(cfg, today)
     v = it[it.valid].copy()
     v["month"] = v.prod_date.dt.to_period("M")
-    start = (today - pd.DateOffset(months=cfg["trend_months"])).to_period("M")
-    v = v[v.month >= start]
+    v = v[v.month.isin(months)]
     t = v.pivot_table(index="month", columns="class", values="Key", aggfunc="count", fill_value=0)
+    t = t.reindex(months, fill_value=0)
+    t.index.name = "month"
     t["TOTALE"] = t.sum(axis=1)
     return t
 
 
 def monthly_leadtime(it, cfg, today):
+    months = _trend_months(cfg, today)
     v = it[it.valid].copy()
     v["month"] = v.prod_date.dt.to_period("M")
-    start = (today - pd.DateOffset(months=cfg["trend_months"])).to_period("M")
-    v = v[v.month >= start]
+    v = v[v.month.isin(months)]
     g = v.groupby("month").lead_days
-    return pd.DataFrame({"n": g.size(), "P50": g.median(), "P85": g.quantile(.85)})
+    l = pd.DataFrame({"n": g.size(), "P50": g.median(), "P85": g.quantile(.85)}).reindex(months)
+    l["n"] = l["n"].fillna(0).astype(int)
+    return l
 
 
 def snapshots(it, ev, cfg, today):
@@ -102,7 +136,7 @@ def snapshots(it, ev, cfg, today):
     da lead time) tranne tipi esclusi; item chiusi con Resolution scartata escono dal backlog alla chiusura."""
     base = it[~it["Issue Type"].isin(cfg["exclude_issue_types"])][["Key", "class", "Created"]]
     e = ev[ev.Key.isin(base.Key)].sort_values("ts")
-    months = pd.period_range(end=today.to_period("M"), periods=cfg["trend_months"] + 1, freq="M")
+    months = _trend_months(cfg, today)
     q, closed = set(cfg["queue_statuses"]), set(cfg["closed_statuses"])
     rows = []
     for m in months:

@@ -1,5 +1,5 @@
 # Configurazione del motore. Tutte le regole di business stanno QUI, non nel codice.
-input: sample-data.csv         # export Status Time Free (unica fonte)
+input: data/stf_20260401_20261001_all.csv        # export Status Time Free (unica fonte)
 output_dir: out
 
 # Chiusura = ingresso in questo stato (DONE = in produzione, per convenzione del team)
@@ -9,9 +9,16 @@ done_pick: last
 # Giorni con piu' di N ingressi in Done = migrazione/bonifica (solo 2026-01-26 ne ha 1112; i rilasci grossi hanno 60-115 item)
 bulk_done_threshold: 300
 
+# Periodo di estrazione dell'export (item entrati in Done in questo intervallo). Le consegne fuori periodo sono
+# escluse (es. item rientrati in Done solo per la bonifica) e nessun mese precedente appare nel trend.
+period_start: 2026-04-01
+# period_end: 2026-09-30    # facoltativo; di default = oggi
+
 # Filtri
 exclude_issue_types: [Epic, Sub-task, Bug Sub-Task]
 include_resolutions: [Done, Fixed, Resolved, Answered]   # le altre (Won't Do, Duplicate...) sono scartate
+# Valori "di default" di Jira (Resolution mai impostata): valgono come consegnati SOLO se lo Status e' done_status
+default_resolutions: [Unresolved, Open]
 
 # Stati "coda" (non lavorati) -> backlog; "attesa rilascio"; il resto e' WIP
 queue_statuses: [To Do, Open, Proposed, Proposal Approved, Selected for Development]
@@ -34,8 +41,8 @@ classes:
   #   summary_regex: "(?i)expedite|urgente"
 
 # Finestre di analisi (mesi indietro da oggi) e soglie "entro N giorni"
-windows_months: [3, 6, 12, 24]
+windows_months: [3, 6]
 percentiles: [50, 85, 95]
 within_days: [7, 14, 30, 60]
 min_samples: 8        # sotto questa soglia la stima e' marcata "poco affidabile"
-trend_months: 12
+trend_months: 6

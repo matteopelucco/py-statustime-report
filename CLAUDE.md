@@ -22,10 +22,13 @@ Funziona uguale su Mac e Windows (Python 3.10+).
 
 ## Convenzioni
 Done = produzione; ultimo ingresso in Done; giorni con >300 ingressi Done = migrazione (2026-01-26) ignorati;
-tipi Epic/Sub-task esclusi; Resolution valide: Done/Fixed/Resolved/Answered.
+tipi Epic/Sub-task esclusi; Resolution valide: Done/Fixed/Resolved/Answered
+(Unresolved/Open valgono solo se lo Status e' Done: Resolution mai impostata).
+L'export contiene solo gli item entrati in Done nel periodo di estrazione: `period_start`/`period_end` in config
+escludono le consegne fuori periodo ("fuori periodo" in items.csv) e limitano finestre (3/6 mesi) e trend ai mesi del periodo.
 
 ## Limiti noti / backlog evolutivo
+- Dicembre 2025 non e' un dato reale: dipende dal filtro dell'export (vedi sopra). Dati prima di `period_start` ignorati.
 - L'export non contiene gli item aperti: backlog "oggi" non misurabile -> serve export con aperti.
 - Nessun campo Expedite / Epic Link / Priority: classi solo per Issue Type (regola `summary_regex` pronta in config).
 - Previsione per percentili storici; possibile Monte Carlo / "quando finisce un set di N item".
-- Dicembre 2025 senza consegne: verificare se e' reale (freeze) o buco dati.

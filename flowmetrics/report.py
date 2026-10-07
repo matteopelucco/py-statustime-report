@@ -3,6 +3,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
+from . import metrics
 from jinja2 import Template
 
 COL = {"Bug": "#d1495b", "Story": "#2e86ab", "Task": "#66a182", "Engine": "#edae49", "Speciali": "#8d6a9f", "TOTALE": "#333"}
@@ -50,11 +51,11 @@ table{border-collapse:collapse;font-size:13px;margin:8px 0}td,th{border:1px soli
 th{background:#f5f5f5}td:first-child,th:first-child{text-align:left}.low{color:#999;font-style:italic}
 .note{background:#fff8e1;border-left:4px solid #edae49;padding:8px 12px;font-size:13px;margin:10px 0}
 .big{font-size:15px}img{max-width:100%}</style>
-<h1>Flow report - progetto PS</h1><div>Dati al {{ today }} &middot; {{ n_valid }} item consegnati validi su {{ n_total }} nell'export</div>
+<h1>Flow report - progetto PS</h1><div>Dati al {{ today }}{% if period %} &middot; periodo di estrazione dal {{ period }}{% endif %} &middot; {{ n_valid }} item consegnati validi su {{ n_total }} nell'export</div>
 
 <h2>1. Se entrasse oggi in board, quando arriva in produzione?</h2>
 <p class="big">Stima dal lead time storico (creazione &rarr; ingresso in Done), in <b>giorni di calendario</b>. P85 = &laquo;nell'85% dei casi e' andata cosi' o meglio&raquo;.</p>
-{% for w, tab in forecast %}<h3>Ultimi {{ w }} mesi</h3>
+{% for w, tab in forecast %}<h3>Ultimi {{ w }} mesi (dal {{ tab[0]["from"] }})</h3>
 <table><tr><th>Classe</th><th>N</th>{% for p in pcols %}<th>{{ p }} (gg)</th>{% endfor %}<th>Data P85 se entra oggi</th>{% for c in wcols %}<th>{{ c }}</th>{% endfor %}<th>Pickup P50</th></tr>
 {% for r in tab %}<tr {% if not r.reliable %}class="low"{% endif %}><td>{{ r["class"] }}{% if not r.reliable %} (poco affidabile){% endif %}</td><td>{{ r.n }}</td>
 {% for p in pcols %}<td>{{ "%.1f"|format(r[p]) if r[p]==r[p] else "-" }}</td>{% endfor %}
@@ -76,6 +77,7 @@ th{background:#f5f5f5}td:first-child,th:first-child{text-align:left}.low{color:#
 <h2>Note metodologiche</h2><ul>
 <li>Produzione = ingresso in <b>{{ cfg.done_status }}</b> ({{ cfg.done_pick }}), escludendo giorni con piu' di {{ cfg.bulk_done_threshold }} ingressi.</li>
 <li>Item scartati dal calcolo: {% for k, v in excl %}{{ k }}: {{ v }}; {% endfor %}</li>
+<li>Solo item entrati in Done nel periodo di estrazione: i mesi precedenti non sono nel trend e le finestre sono limitate all'inizio del periodo.</li>
 <li>Percentili su giorni di calendario; con N &lt; {{ cfg.min_samples }} la stima e' indicativa.</li></ul></html>""")
 
 
@@ -93,9 +95,12 @@ def render(cfg, today, it, fc, thr, lead, snap, bnow, path):
     w = snap.groupby("month").wip.sum()
     bcols = list(p.columns)
     brows = [{"m": str(i), **{c: int(r[c]) for c in bcols}, "tot": int(r.sum()), "wip": int(w.get(i, 0))} for i, r in p.iterrows()]
+    p_start, p_end = metrics.period_bounds(cfg)
+    period = (p_start.strftime("%d/%m/%Y") + (" al " + p_end.strftime("%d/%m/%Y") if p_end is not None else "")) if p_start is not None else ""
     excl = it[~it.valid].excl_reason.value_counts().items()
     html = TPL.render(today=today.strftime("%d/%m/%Y"), n_valid=int(it.valid.sum()), n_total=len(it), forecast=fcs,
                       pcols=pcols, wcols=wcols, img_lead=chart_leadtime(lead), img_backlog=chart_backlog(snap),
                       img_thr=chart_throughput(thr), open_n=len(bnow), bcols=bcols, backlog_rows=brows,
-                      tcols=tcols, thr_rows=thr_rows, bulk=it.attrs.get("bulk_days", []), cfg=cfg, excl=list(excl))
-    open(path, "w", encoding="utf-8").write(html)
+                      tcols=tcols, thr_rows=thr_rows, bulk=it.attrs.get("bulk_days", []), cfg=cfg, excl=list(excl), period=period)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)

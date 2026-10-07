@@ -8,7 +8,8 @@ def main(argv=None):
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--input"); ap.add_argument("--today", help="YYYY-MM-DD (default: oggi)")
     a = ap.parse_args(argv)
-    cfg = yaml.safe_load(open(a.config, encoding="utf-8"))
+    with open(a.config, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
     path = a.input or cfg["input"]
     today = pd.Timestamp(a.today) if a.today else pd.Timestamp.now().normalize() + pd.Timedelta(days=1) - pd.Timedelta(minutes=1)
     df = load.read_export(path); ev = load.events(df)
