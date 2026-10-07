@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Dati sorgente (export Jira) e output del report: mai versionare
+/data/
+/out/
