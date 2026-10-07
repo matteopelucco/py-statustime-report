@@ -13,6 +13,14 @@ def classify(df, cfg):
                 ok = False
             if ok and "summary_regex" in rule and not re.search(rule["summary_regex"], row["Summary"]):
                 ok = False
+            if ok and "filled_fields" in rule and not all(str(row.get(f, "")).strip() for f in rule["filled_fields"]):
+                ok = False
+            if ok and "empty_fields" in rule and any(str(row.get(f, "")).strip() for f in rule["empty_fields"]):
+                ok = False
+            if ok and "labels" in rule:
+                have = {x.lower() for x in re.split(r"[,;\s]+", str(row.get("Labels", ""))) if x}
+                if not have & {x.lower() for x in rule["labels"]}:
+                    ok = False
             if ok:
                 return rule["name"]
         return "Altro"
@@ -48,6 +56,11 @@ def prepare(df, ev, cfg):
     it = it.merge(pick, left_on="Key", right_index=True, how="left")
     it["pickup_days"] = (it.pickup_ts - it.Created).dt.total_seconds() / 86400
     it.loc[it.pickup_days < 0, "pickup_days"] = 0
+    # cycle time = dal primo ingresso in cycle_start_status (es. In Progress) alla produzione
+    start = ev[ev.status == cfg.get("cycle_start_status", "In Progress")].groupby("Key").ts.min().rename("cycle_start_ts")
+    it = it.merge(start, left_on="Key", right_index=True, how="left")
+    it["cycle_days"] = (it.prod_date - it.cycle_start_ts).dt.total_seconds() / 86400
+    it.loc[it.cycle_days < 0, "cycle_days"] = np.nan
 
     it["excl_reason"] = ""
     it.loc[it["Issue Type"].isin(cfg["exclude_issue_types"]), "excl_reason"] = "tipo escluso"
@@ -67,6 +80,8 @@ def prepare(df, ev, cfg):
         it.loc[m & (it.prod_date > p_end), "excl_reason"] = "fuori periodo"
     it["valid"] = it.excl_reason == ""
     it.attrs["bulk_days"] = sorted(str(d) for d in bulk_days)
+    needed = [f for r in cfg["classes"] for f in (["Labels"] if "labels" in r else []) + r.get("filled_fields", []) + r.get("empty_fields", [])]
+    it.attrs["missing_fields"] = sorted({f for f in needed if f not in df.columns})
     return it
 
 
@@ -74,11 +89,12 @@ def _pct(s, ps):
     return {f"P{p}": float(np.percentile(s, p)) for p in ps} if len(s) else {f"P{p}": np.nan for p in ps}
 
 
-def forecast(it, cfg, today):
-    """'Se entrasse oggi': percentili storici del lead time per classe e finestra (per data di produzione)."""
+def forecast(it, cfg, today, col="lead_days"):
+    """'Se entrasse oggi': percentili storici di `col` (lead_days o cycle_days) per classe e finestra
+    (per data di produzione). Righe: cfg["report_classes"] se presente (anche senza dati), altrimenti le classi trovate."""
     rows = []
     v = it[it.valid]
-    classes = sorted(v["class"].unique()) + ["TUTTI"]
+    classes = list(cfg.get("report_classes") or sorted(v["class"].unique())) + ["TUTTI"]
     for w in cfg["windows_months"]:
         start = today - pd.DateOffset(months=w)
         p_start = period_bounds(cfg)[0]
@@ -87,13 +103,14 @@ def forecast(it, cfg, today):
         vw = v[v.prod_date >= start]
         for c in classes:
             s = vw if c == "TUTTI" else vw[vw["class"] == c]
-            d = s.lead_days.dropna()
+            d = s[col].dropna()
             r = {"window": w, "class": c, "n": len(d), "reliable": len(d) >= cfg["min_samples"],
              "from": start.strftime("%d/%m/%Y")}
             r.update(_pct(d, cfg["percentiles"]))
             for n in cfg["within_days"]:
                 r[f"<= {n}g"] = float((d <= n).mean()) if len(d) else np.nan
-            r["pickup_P50"] = float(s.pickup_days.dropna().median()) if s.pickup_days.notna().any() else np.nan
+            if col == "lead_days":
+                r["pickup_P50"] = float(s.pickup_days.dropna().median()) if s.pickup_days.notna().any() else np.nan
             rows.append(r)
     return pd.DataFrame(rows)
 
@@ -120,12 +137,12 @@ def monthly_throughput(it, cfg, today):
     return t
 
 
-def monthly_leadtime(it, cfg, today):
+def monthly_leadtime(it, cfg, today, col="lead_days"):
     months = _trend_months(cfg, today)
     v = it[it.valid].copy()
     v["month"] = v.prod_date.dt.to_period("M")
     v = v[v.month.isin(months)]
-    g = v.groupby("month").lead_days
+    g = v.groupby("month")[col]
     l = pd.DataFrame({"n": g.size(), "P50": g.median(), "P85": g.quantile(.85)}).reindex(months)
     l["n"] = l["n"].fillna(0).astype(int)
     return l

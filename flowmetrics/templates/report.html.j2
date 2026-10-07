@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="it" data-bs-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flow report PS</title>
+<style>{{ tabler_css }}</style>
+<style>
+  :root { --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  body { font-family: var(--font-sans); background: var(--tblr-bg-surface-secondary); }
+  .page-body { margin-top: 1.5rem; }
+  .report-wrap { max-width: 1180px; margin: 0 auto; padding: 0 1rem 3rem; }
+  h1.page-title { font-weight: 700; letter-spacing: -.01em; }
+  .section-title { font-weight: 650; margin: 2.2rem 0 .25rem; }
+  .section-sub { color: var(--tblr-secondary); margin-bottom: 1rem; max-width: 70ch; }
+  .kpi .subheader { text-transform: none; letter-spacing: 0; font-size: .8rem; }
+  .kpi .h1 { font-size: 1.9rem; margin: .15rem 0 0; font-variant-numeric: tabular-nums; }
+  .kpi .unit { font-size: .85rem; color: var(--tblr-secondary); font-weight: 400; margin-left: .2rem; }
+  table { font-variant-numeric: tabular-nums; }
+  table th.num, table td.num { text-align: right; }
+  table td:first-child { white-space: nowrap; }
+  .table thead th { font-size: .72rem; white-space: nowrap; }
+  tr.row-total td { font-weight: 650; background: var(--tblr-bg-surface-tertiary); }
+  tr.row-low td { color: var(--tblr-secondary); }
+  .dot { display: inline-block; width: .6rem; height: .6rem; border-radius: 50%; margin-right: .5rem; }
+  .prob { display: flex; align-items: center; gap: .5rem; justify-content: flex-end; min-width: 92px; }
+  .prob .progress { width: 46px; flex: none; }
+  .chart { width: 100%; height: 320px; }
+  .chart-sm { height: 280px; }
+  .scroll-x { overflow-x: auto; }
+  .theme-toggle { cursor: pointer; }
+  @media print { .theme-toggle, .nav-tabs { display: none !important; } .tab-pane { display: block !important; } }
+</style>
+</head>
+<body>
+<div class="report-wrap">
+  <header class="d-flex align-items-start justify-content-between flex-wrap gap-3 pt-4">
+    <div>
+      <h1 class="page-title mb-1">Flow report &middot; progetto PS</h1>
+      <div class="text-secondary">
+        Dati al <b>{{ today }}</b>{% if period %} &middot; periodo di estrazione dal <b>{{ period }}</b>{% endif %}
+        &middot; {{ n_valid }} item consegnati validi su {{ n_total }} nell'export
+      </div>
+    </div>
+    <button type="button" class="btn btn-outline-secondary btn-sm theme-toggle" id="themeToggle" aria-label="Cambia tema">Tema chiaro / scuro</button>
+  </header>
+
+  <div class="row row-cards mt-3">
+    {% for k in kpis %}
+    <div class="col-6 col-lg-3">
+      <div class="card kpi"><div class="card-body">
+        <div class="subheader">{{ k.label }}</div>
+        <div class="h1">{{ k.value }}{% if k.unit %}<span class="unit">{{ k.unit }}</span>{% endif %}</div>
+        <div class="text-secondary small">{{ k.note }}</div>
+      </div></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% macro forecast_card(prefix, data, with_pickup) %}
+  <div class="card">
+    <div class="card-header">
+      <ul class="nav nav-tabs card-header-tabs window-tabs">
+        {% for w in data %}
+        <li class="nav-item"><a href="#" class="nav-link{% if loop.first %} active{% endif %}" data-pane="{{ prefix }}-{{ w.window }}">Ultimi {{ w.window }} mesi</a></li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% for w in data %}
+    <div class="tab-pane" id="{{ prefix }}-{{ w.window }}"{% if not loop.first %} style="display:none"{% endif %}>
+      <div class="card-body pb-0 text-secondary small">Consegne dal {{ w["from"] }}</div>
+      <div class="scroll-x">
+      <table class="table table-vcenter card-table">
+        <thead><tr>
+          <th>Classe</th><th class="num">N</th>
+          {% for p in pcols %}<th class="num">{{ p }} (gg)</th>{% endfor %}
+          <th class="num">Data P85 se entra oggi</th>
+          {% for c in wcols %}<th class="num">entro {{ c.n }} gg</th>{% endfor %}
+          {% if with_pickup %}<th class="num">Pickup P50 (gg)</th>{% endif %}
+        </tr></thead>
+        <tbody>
+        {% for r in w.rows %}
+        <tr class="{% if r.total %}row-total{% endif %}{% if not r.reliable %} row-low{% endif %}">
+          <td><span class="dot" style="background:{{ r.color }}"></span>{{ r.name }}{% if r.n == 0 %} <span class="badge bg-secondary-lt ms-1">nessun dato</span>{% elif not r.reliable %} <span class="badge bg-yellow-lt ms-1">poco affidabile</span>{% endif %}</td>
+          <td class="num">{{ r.n }}</td>
+          {% for v in r.pcts %}<td class="num">{{ v }}</td>{% endfor %}
+          <td class="num">{{ r.d85 }}</td>
+          {% for pr in r.probs %}
+          <td class="num"><div class="prob"><span>{{ pr.label }}</span><div class="progress progress-sm"><div class="progress-bar {{ pr.cls }}" style="width:{{ pr.pct }}%"></div></div></div></td>
+          {% endfor %}
+          {% if with_pickup %}<td class="num">{{ r.pickup }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endmacro %}
+
+  <h2 class="section-title">1. Lead time: se entrasse oggi in board, quando arriva in produzione?</h2>
+  <p class="section-sub">Stima dal lead time storico (creazione &rarr; ingresso in Done), in <b>giorni di calendario</b>.
+    P85 significa che nell'85% dei casi &egrave; andata cos&igrave; o meglio. &laquo;Tutti&raquo; comprende tutti gli item consegnati, anche Task e Speciali.</p>
+  {% if missing %}
+  <div class="alert alert-info" role="alert"><div>
+    L'export non contiene {{ missing|length }} {{ "campo" if missing|length == 1 else "campi" }} usat{{ "o" if missing|length == 1 else "i" }} dalle regole di classificazione: <b>{{ missing|join(", ") }}</b>.
+    Le classi che ne dipendono (Expedite, Story progettuali) risultano vuote o non distinte.
+  </div></div>
+  {% endif %}
+  {{ forecast_card("lead", forecast, true) }}
+
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Andamento mensile del lead time</h3></div>
+    <div class="card-body"><div id="chartLead" class="chart chart-sm"></div>
+      <div class="text-secondary small">Per mese di produzione. Le barre indicano quanti item sono stati consegnati nel mese.</div></div>
+  </div>
+
+  <h2 class="section-title">2. Cycle time: se l'item entra direttamente in {{ cfg.cycle_start_status }}</h2>
+  <p class="section-sub">Per un item urgente, <b>uno solo alla volta</b>, che salta la coda: tempo dal primo ingresso in <b>{{ cfg.cycle_start_status }}</b> all'ingresso in Done,
+    in giorni di calendario. Sono considerati solo gli item passati da {{ cfg.cycle_start_status }}.</p>
+  {{ forecast_card("cyc", cycle, false) }}
+
+  <div class="card mt-3">
+    <div class="card-header"><h3 class="card-title">Andamento mensile del cycle time</h3></div>
+    <div class="card-body"><div id="chartCycle" class="chart chart-sm"></div>
+      <div class="text-secondary small">Per mese di produzione. Le barre indicano quanti item con cycle time sono stati consegnati nel mese.</div></div>
+  </div>
+
+  <h2 class="section-title">3. Come sta il backlog?</h2>
+  {% if open_n < 30 %}
+  <div class="alert alert-warning" role="alert"><div>
+    <b>Attenzione:</b> l'export contiene solo {{ open_n }} item non chiusi. Il backlog &laquo;oggi&raquo; non &egrave; misurabile: serve un export (stessa query PS, stessi campi) che includa anche gli item aperti.
+    Il grafico &egrave; <i>ricostruito dalle transizioni</i> e vale solo per il passato, sottostimando il backlog (gli item mai chiusi o cancellati non compaiono).
+  </div></div>
+  {% endif %}
+  <div class="card">
+    <div class="card-body"><div id="chartBacklog" class="chart"></div></div>
+    <div class="scroll-x">
+    <table class="table table-vcenter card-table">
+      <thead><tr><th>Mese</th>{% for c in bcols %}<th class="num">{{ c.name }}</th>{% endfor %}<th class="num">Backlog tot</th><th class="num">WIP tot</th></tr></thead>
+      <tbody>{% for r in backlog_rows %}
+        <tr><td>{{ r.m }}</td>{% for v in r.vals %}<td class="num">{{ v }}</td>{% endfor %}<td class="num fw-bold">{{ r.tot }}</td><td class="num">{{ r.wip }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    </div>
+  </div>
+  {% if bulk %}
+  <div class="alert alert-info mt-3" role="alert"><div>Bonifica di massa rilevata nei giorni: {{ bulk|join(", ") }}. Quegli ingressi in Done non sono considerati produzione per il lead time, ma chiudono gli item nel backlog ricostruito (si vede come un calo brusco).</div></div>
+  {% endif %}
+
+  <h2 class="section-title">4. Quanti item in produzione, mese per mese</h2>
+  <div class="card">
+    <div class="card-body"><div id="chartThroughput" class="chart"></div></div>
+    <div class="scroll-x">
+    <table class="table table-vcenter card-table">
+      <thead><tr><th>Mese</th>{% for c in tcols %}<th class="num">{{ c.name }}</th>{% endfor %}<th class="num">Totale</th></tr></thead>
+      <tbody>{% for r in thr_rows %}
+        <tr><td>{{ r.m }}</td>{% for v in r.vals %}<td class="num">{{ v }}</td>{% endfor %}<td class="num fw-bold">{{ r.tot }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+    </div>
+  </div>
+
+  <h2 class="section-title">Note metodologiche</h2>
+  <div class="card"><div class="card-body">
+    <ul class="mb-0">
+      <li>Produzione = ingresso in <b>{{ cfg.done_status }}</b> ({{ cfg.done_pick }}), escludendo i giorni con pi&ugrave; di {{ cfg.bulk_done_threshold }} ingressi.</li>
+      <li>Solo item entrati in Done nel periodo di estrazione: i mesi precedenti non sono nel trend e le finestre sono limitate all'inizio del periodo.</li>
+      <li>Item scartati dal calcolo: {% for k, v in excl %}<span class="badge bg-secondary-lt me-1">{{ k }}: {{ v }}</span>{% endfor %}</li>
+      <li>Percentili su giorni di calendario; con N &lt; {{ cfg.min_samples }} la stima &egrave; indicativa.</li>
+    </ul>
+  </div></div>
+</div>
+
+<script id="report-data" type="application/json">{{ data_json }}</script>
+<script>{{ echarts_js }}</script>
+<script>
+(function () {
+  var D = JSON.parse(document.getElementById("report-data").textContent);
+  var root = document.documentElement;
+  var charts = {};
+
+  function css(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
+  function theme() {
+    return { text: css("--tblr-body-color"), muted: css("--tblr-secondary"), line: css("--tblr-border-color"), bg: css("--tblr-bg-surface") };
+  }
+  function baseAxis(t) {
+    return {
+      axisLabel: { color: t.muted }, axisLine: { lineStyle: { color: t.line } },
+      axisTick: { show: false }, splitLine: { lineStyle: { color: t.line, type: "dashed" } }
+    };
+  }
+  function base(t) {
+    return {
+      textStyle: { fontFamily: getComputedStyle(document.body).fontFamily, color: t.text },
+      grid: { left: 8, right: 8, top: 44, bottom: 8, containLabel: true },
+      legend: { top: 0, textStyle: { color: t.text }, icon: "roundRect", itemWidth: 12, itemHeight: 8 },
+      tooltip: { trigger: "axis", backgroundColor: t.bg, borderColor: t.line, textStyle: { color: t.text }, axisPointer: { type: "shadow" } }
+    };
+  }
+  function xAxis(t, data) { return Object.assign({ type: "category", data: data }, baseAxis(t), { splitLine: { show: false } }); }
+  function yAxis(t, name) { return Object.assign({ type: "value", name: name, nameTextStyle: { color: t.muted, align: "left" } }, baseAxis(t), { axisLine: { show: false } }); }
+
+  function lead(t, L) {
+    var o = base(t);
+    o.tooltip.axisPointer = { type: "cross", label: { backgroundColor: t.muted } };
+    o.xAxis = xAxis(t, L.months);
+    o.yAxis = [yAxis(t, "giorni"), Object.assign(yAxis(t, "item"), { splitLine: { show: false }, position: "right" })];
+    o.series = [
+      { name: "Item consegnati", type: "bar", yAxisIndex: 1, data: L.n, barMaxWidth: 36, itemStyle: { color: t.line, borderRadius: [4, 4, 0, 0] }, z: 1 },
+      { name: "P50", type: "line", data: L.p50, symbolSize: 8, lineStyle: { width: 3 }, itemStyle: { color: "#2e86ab" }, z: 3 },
+      { name: "P85", type: "line", data: L.p85, symbolSize: 8, lineStyle: { width: 3 }, itemStyle: { color: "#e5833b" }, z: 3 }
+    ];
+    return o;
+  }
+  function stacked(t, months, series, yname, totals, extraLine) {
+    var o = base(t);
+    o.xAxis = xAxis(t, months); o.yAxis = yAxis(t, yname);
+    o.series = series.map(function (s) {
+      return { name: s.name, type: "bar", stack: "tot", data: s.data, barMaxWidth: 46, itemStyle: { color: s.color }, emphasis: { focus: "series" } };
+    });
+    if (totals) {
+      o.series.push({ name: "Totale", type: "line", data: totals, symbolSize: 0, lineStyle: { width: 0 }, tooltip: { show: false },
+        label: { show: true, position: "top", color: t.text, fontWeight: 600 }, itemStyle: { color: "transparent" }, silent: true });
+      o.legend.data = series.map(function (s) { return s.name; });
+    }
+    if (extraLine) {
+      o.series.push({ name: extraLine.name, type: "line", data: extraLine.data, symbolSize: 8, lineStyle: { width: 3, type: "dashed" }, itemStyle: { color: extraLine.color } });
+    }
+    return o;
+  }
+
+  function render() {
+    var t = theme();
+    var defs = {
+      chartLead: lead(t, D.lead),
+      chartCycle: lead(t, D.cycle),
+      chartBacklog: stacked(t, D.backlog.months, D.backlog.series, "item", null, { name: "WIP (totale)", data: D.backlog.wip, color: "#e5833b" }),
+      chartThroughput: stacked(t, D.throughput.months, D.throughput.series, "item in produzione", D.throughput.total)
+    };
+    Object.keys(defs).forEach(function (id) {
+      if (charts[id]) charts[id].dispose();
+      charts[id] = echarts.init(document.getElementById(id), null, { renderer: "svg" });
+      charts[id].setOption(defs[id]);
+    });
+  }
+
+  function setTheme(mode) {
+    root.setAttribute("data-bs-theme", mode);
+    try { localStorage.setItem("flow-theme", mode); } catch (e) {}
+    render();
+  }
+  var saved = null;
+  try { saved = localStorage.getItem("flow-theme"); } catch (e) {}
+  root.setAttribute("data-bs-theme", saved || (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
+  document.getElementById("themeToggle").addEventListener("click", function () {
+    setTheme(root.getAttribute("data-bs-theme") === "dark" ? "light" : "dark");
+  });
+  document.querySelectorAll(".window-tabs").forEach(function (tabs) {
+    var card = tabs.closest(".card");
+    tabs.querySelectorAll(".nav-link").forEach(function (a) {
+      a.addEventListener("click", function (e) {
+        e.preventDefault();
+        tabs.querySelectorAll(".nav-link").forEach(function (x) { x.classList.remove("active"); });
+        card.querySelectorAll(".tab-pane").forEach(function (p) { p.style.display = "none"; });
+        a.classList.add("active");
+        document.getElementById(a.dataset.pane).style.display = "";
+      });
+    });
+  });
+  window.addEventListener("resize", function () { Object.keys(charts).forEach(function (k) { charts[k].resize(); }); });
+  render();
+})();
+</script>
+</body>
+</html>

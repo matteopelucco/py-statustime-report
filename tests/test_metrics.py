@@ -80,3 +80,27 @@ def test_periodo_di_estrazione_esclude_consegne_fuori_periodo():
     today = pd.Timestamp("2026-10-07")
     t = metrics.monthly_throughput(it.reset_index(), cfg, today)
     assert [str(m) for m in t.index] == ["2026-04", "2026-05"]
+
+
+def test_cycle_time_da_primo_in_progress():
+    it = _prep([("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "2026-01-02 00:00,2026-01-04 00:00", "2026-01-11 00:00"),
+                ("A-2", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "", "2026-01-12 00:00")]).set_index("Key")
+    assert it.loc["A-1", "cycle_days"] == 9 and it.loc["A-1", "lead_days"] == 10
+    assert pd.isna(it.loc["A-2", "cycle_days"])      # mai passato da In Progress: nessun cycle time
+
+
+def test_expedite_da_label():
+    d = _df([("A-1", "Bug", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05"),
+             ("A-2", "Bug", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05")])
+    d["Labels"] = ["web, Expedite", "web"]
+    assert list(metrics.classify(d, CFG)) == ["Expedite", "Bug"]
+    assert list(metrics.classify(d.drop(columns="Labels"), CFG)) == ["Bug", "Bug"]    # senza colonna Labels non si distingue
+
+
+def test_story_progettuale_da_epic_link():
+    d = _df([("A-1", "Story", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05"),
+             ("A-2", "Story", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05"),
+             ("A-3", "Story", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05")])
+    d["Epic Link"] = ["PS-1", "", "PS-1"]
+    d["Labels"] = ["", "", "expedite"]
+    assert list(metrics.classify(d, CFG)) == ["Story progettuale", "Story (non progettuale)", "Expedite"]

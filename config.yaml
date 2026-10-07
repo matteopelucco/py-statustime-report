@@ -26,9 +26,16 @@ closed_statuses: [Done, Closed, Archived, DISCARDED]
 
 # Classi di lavoro: la prima regola che combacia vince. Campi: issue_types, summary_regex
 classes:
+  # Expedite = label Jira "Expedite" (serve la colonna Labels nell'export; senza, la classe resta vuota; maiuscole ignorate)
+  - name: Expedite
+    labels: [Expedite]
   - name: Bug
     issue_types: [Bug]
-  - name: Story
+  # Story progettuale = Epic Link valorizzato; non progettuale = Epic Link vuoto (servono le colonne Epic Link)
+  - name: Story progettuale
+    issue_types: [Story]
+    filled_fields: [Epic Link]
+  - name: Story (non progettuale)
     issue_types: [Story]
   - name: Task
     issue_types: [Task]
@@ -36,9 +43,12 @@ classes:
     issue_types: [Engine]
   - name: Speciali
     issue_types: [Analysis, System Engineer Task]
-  # esempio per Expedite, quando ci sara' una regola (prima delle altre!):
-  # - name: Expedite
-  #   summary_regex: "(?i)expedite|urgente"
+  # altra regola disponibile: summary_regex: "(?i)regex sul titolo"
+
+# Righe mostrate nelle tabelle di lead time e cycle time (+ "Tutti" = tutti gli item validi, anche Task e Speciali)
+report_classes: [Bug, Engine, Expedite, Story (non progettuale)]
+# Cycle time = dal primo ingresso in questo stato alla produzione (item che salta la coda)
+cycle_start_status: In Progress
 
 # Finestre di analisi (mesi indietro da oggi) e soglie "entro N giorni"
 windows_months: [3, 6]

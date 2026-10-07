@@ -14,9 +14,13 @@ Funziona uguale su Mac e Windows (Python 3.10+).
 2. Backlog/WIP a fine mese ricostruiti dalle transizioni (+ item aperti dall'export).
 3. Item in produzione per mese e classe.
 
+Cycle time = dal primo ingresso in `cycle_start_status` (In Progress) alla produzione; item mai passati da In Progress non hanno cycle time.
+Tabelle del report: righe da `report_classes` (+ Tutti = tutti gli item validi).
+
 ## Struttura
 - `config.yaml` tutte le regole di business (classi, filtri, soglie). Primo posto dove intervenire.
-- `flowmetrics/load.py` parsing export; `metrics.py` calcoli (funzioni pure); `report.py` HTML; `cli.py`.
+- `flowmetrics/load.py` parsing export; `metrics.py` calcoli (funzioni pure); `report.py` + `templates/report.html.j2` HTML; `cli.py`.
+- `flowmetrics/vendor/` Tabler (CSS, MIT) ed Apache ECharts (JS) incorporati nel report: nessuna dipendenza esterna, si apre offline.
 - `tests/` regole verificate su dati sintetici. Ogni nuova regola = un test.
 - `out/` output (items.csv = una riga per item con motivo di esclusione: utile per audit).
 
@@ -30,5 +34,5 @@ escludono le consegne fuori periodo ("fuori periodo" in items.csv) e limitano fi
 ## Limiti noti / backlog evolutivo
 - Dicembre 2025 non e' un dato reale: dipende dal filtro dell'export (vedi sopra). Dati prima di `period_start` ignorati.
 - L'export non contiene gli item aperti: backlog "oggi" non misurabile -> serve export con aperti.
-- Nessun campo Expedite / Epic Link / Priority: classi solo per Issue Type (regola `summary_regex` pronta in config).
+- Expedite = label Jira: regola `labels` gia' in config, ma serve la colonna `Labels` nell'export (oggi assente: riga vuota nel report). Mancano anche Epic Link/Parent per distinguere le Story progettuali.
 - Previsione per percentili storici; possibile Monte Carlo / "quando finisce un set di N item".

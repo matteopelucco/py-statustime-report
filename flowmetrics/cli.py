@@ -17,10 +17,11 @@ def main(argv=None):
     fc = metrics.forecast(it, cfg, today); thr = metrics.monthly_throughput(it, cfg, today)
     lead = metrics.monthly_leadtime(it, cfg, today); snap = metrics.snapshots(it, ev, cfg, today)
     bnow = metrics.backlog_now(it, ev, cfg, today)
+    cyc = metrics.forecast(it, cfg, today, col="cycle_days"); cyl = metrics.monthly_leadtime(it, cfg, today, col="cycle_days")
     out = cfg["output_dir"]; os.makedirs(out, exist_ok=True)
     it.drop(columns=[c for c in it.columns if c.startswith(("'->", "#"))]).to_csv(f"{out}/items.csv", index=False)
-    fc.to_csv(f"{out}/forecast.csv", index=False); thr.to_csv(f"{out}/throughput.csv"); snap.to_csv(f"{out}/backlog_history.csv", index=False)
-    report.render(cfg, today, it, fc, thr, lead, snap, bnow, f"{out}/report.html")
+    fc.to_csv(f"{out}/forecast.csv", index=False); cyc.to_csv(f"{out}/cycle_forecast.csv", index=False); thr.to_csv(f"{out}/throughput.csv"); snap.to_csv(f"{out}/backlog_history.csv", index=False)
+    report.render(cfg, today, it, fc, thr, lead, snap, bnow, cyc, cyl, f"{out}/report.html")
     print(f"OK: {out}/report.html  (item validi {int(it.valid.sum())}/{len(it)})")
 
 
