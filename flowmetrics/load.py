@@ -18,6 +18,22 @@ def read_export(path):
     return df
 
 
+def read_exports(done_path, all_path=None):
+    """Export 'done' (item entrati in Done nel periodo) + export facoltativo 'all' (tutte le issue del periodo,
+    aperte comprese), stesso formato. Unione per Key: se una issue e' in entrambi vale la riga dell'export 'all'
+    (fotografia completa); colonna `fonte` = 'entrambi' / 'solo done' / 'solo all'."""
+    done = read_export(done_path)
+    if not all_path:
+        return done.assign(fonte="solo done")
+    al = read_export(all_path)
+    in_done, in_all = set(done.Key), set(al.Key)
+    df = pd.concat([al, done[~done.Key.isin(in_all)]], ignore_index=True)
+    text = [c for c in df.columns if c not in ("Created", "Resolved")]
+    df[text] = df[text].fillna("")      # colonne presenti in un solo export
+    df["fonte"] = [("entrambi" if k in in_done else "solo all") if k in in_all else "solo done" for k in df.Key]
+    return df
+
+
 def status_names(df):
     return [c[3:] for c in df.columns if c.startswith("'->")]
 

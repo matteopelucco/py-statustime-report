@@ -3,16 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flow report PS</title>
+<title>Flow report{% if cfg.project_name %} {{ cfg.project_name }}{% endif %}</title>
 <style>{{ tabler_css }}</style>
 <style>
   :root { --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
   body { font-family: var(--font-sans); background: var(--tblr-bg-surface-secondary); }
   .page-body { margin-top: 1.5rem; }
-  .report-wrap { max-width: 1180px; margin: 0 auto; padding: 0 1rem 3rem; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-left: 1rem; padding-right: 1rem; }
+  .report-wrap { padding-bottom: 3rem; }
+  /* intestazione + menu a tab (pattern navbar orizzontale di Tabler) */
+  .report-brand { background: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-border-color); padding: .9rem 0; min-height: 0; }
+  .brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 2.4rem; height: 2.4rem; border-radius: var(--tblr-border-radius-lg, 8px);
+    background: var(--tblr-primary); color: #fff; flex: none; }
+  .brand-mark .icon { width: 1.35rem; height: 1.35rem; }
+  .brand-title { font-weight: 700; font-size: 1.1rem; letter-spacing: -.01em; line-height: 1.3; }
+  .report-tabs { z-index: 1020; }
+  .report-tabs .navbar { background: var(--tblr-bg-surface); border-bottom: 1px solid var(--tblr-border-color); padding: .25rem 0; min-height: 3.25rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .03); }
+  .report-tabs .navbar-nav { flex-direction: row; gap: .25rem; overflow-x: auto; scrollbar-width: none; }
+  .report-tabs .navbar-nav::-webkit-scrollbar { display: none; }
+  .report-tabs .nav-link { white-space: nowrap; padding: .6rem .75rem; border-radius: var(--tblr-border-radius); color: var(--tblr-secondary); font-weight: 500; }
+  .report-tabs .nav-link:hover { color: var(--tblr-body-color); background: var(--tblr-bg-surface-secondary); }
+  .report-tabs .nav-item.active .nav-link { color: var(--tblr-primary); font-weight: 600; }
+  .report-tabs .nav-item.active:after { content: ""; position: absolute; left: .5rem; right: .5rem; bottom: -.3rem; border-bottom: 2px solid var(--tblr-primary); }
+  .report-tabs .nav-item { position: relative; }
+  .report-tabs .nav-link-icon { display: inline-flex; margin-right: .45rem; opacity: .85; }
+  .report-tabs .nav-link-icon .icon { width: 1.15rem; height: 1.15rem; }
+  /* Tabler mette i badge della navbar come notifiche sull'icona: qui stanno in linea col titolo */
+  .report-tabs .navbar .navbar-nav .nav-link .badge { position: static; transform: none; margin: 0 0 0 .5rem; font-variant-numeric: tabular-nums; font-size: .7rem; }
+  .main-pane[hidden] { display: none !important; }
+  .main-pane > .section-title:first-child { margin-top: 1.6rem; }
+  .theme-toggle .when-light { display: inline-flex; }
+  .theme-toggle .when-dark, [data-bs-theme=dark] .theme-toggle .when-light { display: none; }
+  [data-bs-theme=dark] .theme-toggle .when-dark { display: inline-flex; }
+  @media (max-width: 575.98px) { .report-tabs .nav-link-title { display: none; } .report-tabs .nav-item.active .nav-link-title { display: inline; } }
   h1.page-title { font-weight: 700; letter-spacing: -.01em; }
   .section-title { font-weight: 650; margin: 2.2rem 0 .25rem; }
-  .section-sub { color: var(--tblr-secondary); margin-bottom: 1rem; max-width: 70ch; }
+  .section-sub { color: var(--tblr-secondary); margin-bottom: 1rem; }
   .kpi .subheader { text-transform: none; letter-spacing: 0; font-size: .8rem; }
   .kpi .h1 { font-size: 1.9rem; margin: .15rem 0 0; font-variant-numeric: tabular-nums; }
   .kpi .unit { font-size: .85rem; color: var(--tblr-secondary); font-weight: 400; margin-left: .2rem; }
@@ -29,33 +56,321 @@
   .chart-sm { height: 280px; }
   .scroll-x { overflow-x: auto; }
   .theme-toggle { cursor: pointer; }
-  @media print { .theme-toggle, .nav-tabs { display: none !important; } .tab-pane { display: block !important; } }
+  .subsection-title { font-weight: 600; font-size: 1.05rem; margin: 1.2rem 0 .25rem; }
+  .verdict { border-left: 5px solid var(--tblr-secondary); }
+  .verdict-success { border-left-color: var(--tblr-green); }
+  .verdict-danger { border-left-color: var(--tblr-red); }
+  .verdict-success .h2 { color: var(--tblr-green); } .verdict-danger .h2 { color: var(--tblr-red); }
+  .msg li { margin-bottom: .45rem; }
+  /* KPI dei tab: card Tabler con mini-grafico del trend in basso */
+  .period-line { margin: -.1rem 0 .9rem; }
+  .kpi-caption { margin: -.15rem 0 .6rem; }
+  .kpi-spark { height: 100%; overflow: hidden; }
+  .kpi-spark .h1 { font-size: 1.6rem; }
+  .kpi-big { font-size: 2.4rem !important; }
+  .kpi .subheader .dot { margin-right: .35rem; width: .55rem; height: .55rem; }
+  .kpi-total { box-shadow: inset 0 3px 0 var(--tblr-primary); }
+  .kpi-low .h1 { color: var(--tblr-secondary); }
+  .spark { height: 46px; margin: 0 -1px -1px; }
+  .info-title { display: flex; align-items: center; gap: .4rem; margin-top: 2rem; }
+  .info-title .icon { width: 1.15rem; height: 1.15rem; color: var(--tblr-secondary); }
+  .info-body { color: var(--tblr-secondary); }
+  .info-body b { color: var(--tblr-body-color); }
+  .report-footer { border-top: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface); color: var(--tblr-secondary);
+    font-size: .8rem; padding: 1rem 0; text-align: center; }
+  .report-footer b { color: var(--tblr-body-color); font-weight: 600; }
+  /* voce "Metodologia" nell'intestazione e tab FAQ */
+  .faq-link { gap: .4rem; font-weight: 500; }
+  .faq-link .icon { width: 1.15rem; height: 1.15rem; margin: 0; }
+  .faq-nav.active .faq-link { color: var(--tblr-primary); background: var(--tblr-primary-lt); }
+  @media (max-width: 575.98px) { .faq-label { display: none; } }
+  .faq-group .card-body { padding-top: .25rem; padding-bottom: .25rem; }
+  .faq-key { box-shadow: inset 3px 0 0 var(--tblr-primary); }
+  .faq-item { border-bottom: 1px solid var(--tblr-border-color); }
+  .faq-item:last-child { border-bottom: 0; }
+  .faq-item summary { cursor: pointer; padding: .7rem 1.5rem .7rem 0; font-weight: 600; list-style: none; position: relative; }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary::after { content: "+"; position: absolute; right: .1rem; top: .55rem; font-size: 1.1rem; color: var(--tblr-secondary); }
+  .faq-item[open] summary::after { content: "\2212"; }
+  .faq-item summary:hover { color: var(--tblr-primary); }
+  .faq-a { padding: 0 0 .85rem; color: var(--tblr-secondary); line-height: 1.55; }
+  .faq-a b { color: var(--tblr-body-color); }
+  .faq-a ul { padding-left: 1.1rem; }
+  .kpi .h1 .badge { font-size: .75rem; font-weight: 600; }
+  .chart-xs { height: 220px; }
+  .issues th[data-sort] { cursor: pointer; user-select: none; }
+  .issues th.sorted::after { content: " \25BE"; } .issues th.sorted.asc::after { content: " \25B4"; }
+  .issues td.sum { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .issues td.num .x { color: var(--tblr-secondary); font-size: .75rem; margin-left: .3rem; }
+  .issues td.f1, .legend-cell.f1, .legend-swatch.f1 { background: var(--tblr-yellow-lt); }
+  .issues td.f2, .legend-cell.f2, .legend-swatch.f2 { background: var(--tblr-red-lt); }
+  .legend-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem 1.25rem; padding: .6rem 1.25rem;
+    border-top: 1px solid var(--tblr-border-color); background: var(--tblr-bg-surface-secondary); }
+  .legend-item { display: inline-flex; align-items: center; gap: .4rem; }
+  .legend-cell { display: inline-block; padding: .1rem .45rem; border-radius: 4px; color: var(--tblr-body-color);
+    font-variant-numeric: tabular-nums; border: 1px solid var(--tblr-border-color); }
+  .legend-cell .x { color: var(--tblr-secondary); font-size: .75rem; margin-left: .3rem; }
+  .legend-swatch { display: inline-block; width: .8rem; height: .8rem; border-radius: 3px; margin-right: .35rem; vertical-align: -.1rem;
+    border: 1px solid var(--tblr-border-color); }
+  .info-wrap { position: relative; }
+  .info-btn { color: var(--tblr-secondary); margin-left: .15rem; }
+  .info-btn .icon { width: 1.1rem; height: 1.1rem; }
+  .info-pop { position: absolute; top: calc(100% + .4rem); left: 0; z-index: 1030; width: min(420px, calc(100vw - 2rem)); text-align: left; }
+  @media print { .theme-toggle, .nav-tabs, .report-tabs { display: none !important; } .tab-pane, .main-pane[hidden] { display: block !important; } }
 </style>
 </head>
 <body>
-<div class="report-wrap">
-  <header class="d-flex align-items-start justify-content-between flex-wrap gap-3 pt-4">
-    <div>
-      <h1 class="page-title mb-1">Flow report &middot; progetto PS</h1>
-      <div class="text-secondary">
-        Dati al <b>{{ today }}</b>{% if period %} &middot; periodo di estrazione dal <b>{{ period }}</b>{% endif %}
-        &middot; {{ n_valid }} item consegnati validi su {{ n_total }} nell'export
+{% set ICONS = {
+  "chart": '<path d="M3 13a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M15 9a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v10a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M9 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M4 20h14"/>',
+  "sintesi": '<path d="M5 4h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M5 16h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/><path d="M15 12h4a1 1 0 0 1 1 1v6a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-6a1 1 0 0 1 1 -1"/><path d="M15 4h4a1 1 0 0 1 1 1v2a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1v-2a1 1 0 0 1 1 -1"/>',
+  "issue": '<path d="M13 5h8"/><path d="M13 9h5"/><path d="M13 15h8"/><path d="M13 19h5"/><path d="M3 5a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/><path d="M3 15a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v4a1 1 0 0 1 -1 1h-4a1 1 0 0 1 -1 -1z"/>',
+  "tempi": '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 7v5l3 3"/>',
+  "backlog": '<path d="M12 4l-8 4l8 4l8 -4l-8 -4"/><path d="M4 12l8 4l8 -4"/><path d="M4 16l8 4l8 -4"/>',
+  "deployments": '<path d="M4 13a8 8 0 0 1 7 7a6 6 0 0 0 3 -5a9 9 0 0 0 6 -8a3 3 0 0 0 -3 -3a9 9 0 0 0 -8 6a6 6 0 0 0 -5 3"/><path d="M7 14a6 6 0 0 0 -3 6a6 6 0 0 0 6 -3"/><path d="M14 9a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
+  "help": '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 17v.01"/><path d="M12 13.5a1.5 1.5 0 0 1 1 -1.5a2.6 2.6 0 1 0 -3 -4"/>',
+  "info": '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0"/><path d="M12 9h.01"/><path d="M11 12h1v4h1"/>',
+  "moon":'<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/>',
+  "sun": '<path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>'
+} %}
+{% macro icon(name) %}<svg xmlns="http://www.w3.org/2000/svg" class="icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ ICONS[name]|safe }}</svg>{% endmacro %}
+{% set d = summ.rec[-1] %}
+{% set TABS = [
+  {"id": "sintesi", "title": "Sintesi", "badge": summ.verdict_word, "cls": "bg-" ~ ("green" if summ.cls == "success" else "red" if summ.cls == "danger" else "secondary") ~ "-lt", "tip": summ.title},
+  {"id": "issue", "title": "Issue", "badge": tk.issue.any, "cls": "bg-red-lt", "tip": tk.issue.any ~ " issue con anomalie su " ~ tk.issue.n ~ " degli ultimi " ~ tk.win.months ~ " mesi"},
+  {"id": "tempi", "title": "Lead time / Cycle time", "badge": "", "cls": "", "tip": ""},
+  {"id": "backlog", "title": "Backlog", "badge": summ.n_open, "cls": "bg-blue-lt", "tip": summ.n_open ~ " item aperti"},
+  {"id": "deployments", "title": "Deployments", "badge": tk.deploy.value, "cls": "bg-secondary-lt", "tip": tk.deploy.value ~ " item in produzione negli ultimi " ~ tk.win.months ~ " mesi"}
+] %}
+<header class="navbar navbar-expand-md report-brand">
+  <div class="wrap w-100 d-flex align-items-center gap-3">
+    <span class="brand-mark">{{ icon("chart") }}</span>
+    <div class="me-auto">
+      <div class="brand-title">Flow report{% if cfg.project_name %} &middot; progetto {{ cfg.project_name }}{% endif %}</div>
+      <div class="text-secondary small">
+        Dati al <b>{{ today }}</b>{% if period %} &middot; periodo dal <b>{{ period }}</b>{% endif %}
+        &middot; {{ n_valid }} item consegnati validi su {{ n_total }}
       </div>
     </div>
-    <button type="button" class="btn btn-outline-secondary btn-sm theme-toggle" id="themeToggle" aria-label="Cambia tema">Tema chiaro / scuro</button>
-  </header>
+    <span class="faq-nav d-print-none"><a class="btn btn-ghost-secondary faq-link" href="#faq" data-tab="faq" title="Come si leggono i numeri: domande e risposte">{{ icon("help") }}<span class="faq-label">Metodologia</span></a></span>
+    <button type="button" class="btn btn-icon btn-ghost-secondary theme-toggle d-print-none" id="themeToggle" title="Tema chiaro / scuro" aria-label="Cambia tema chiaro / scuro">
+      <span class="when-light">{{ icon("moon") }}</span><span class="when-dark">{{ icon("sun") }}</span>
+    </button>
+  </div>
+</header>
+<header class="navbar-expand-md report-tabs sticky-top d-print-none">
+  <div class="navbar">
+    <div class="wrap w-100">
+      <ul class="navbar-nav" role="tablist" aria-label="Sezioni del report">
+        {% for t in TABS %}
+        <li class="nav-item{% if loop.first %} active{% endif %}" role="presentation">
+          <a class="nav-link" href="#{{ t.id }}" role="tab" data-tab="{{ t.id }}" aria-controls="pane-{{ t.id }}" aria-selected="{{ 'true' if loop.first else 'false' }}"{% if t.tip %} title="{{ t.tip }}"{% endif %}>
+            <span class="nav-link-icon">{{ icon(t.id) }}</span>
+            <span class="nav-link-title">{{ t.title }}</span>
+            {% if t.badge != "" %}<span class="badge {{ t.cls }}">{{ t.badge }}</span>{% endif %}
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</header>
 
-  <div class="row row-cards mt-3">
-    {% for k in kpis %}
+<div class="report-wrap wrap">
+  <section class="main-pane" id="pane-sintesi" role="tabpanel" aria-label="Sintesi">
+  <h2 class="section-title">Sintesi</h2>
+  <p class="section-sub">Dati fino al <b>{{ end }}</b>. Gli ultimi {{ summ.rec|join(" e ") }} giorni sono confrontati con lo <b>storico</b>:
+    consegne dal {{ summ.hist_from }} al {{ summ.hist_to }} ({{ summ.n.hist }} item).</p>
+
+  {% for w in src.warnings %}
+  <div class="alert alert-warning" role="alert"><div><b>Export non allineati:</b> {{ w }}</div></div>
+  {% endfor %}
+  <div class="card verdict verdict-{{ summ.cls }}"><div class="card-body">
+    <div class="h2 mb-1">{{ summ.title }}</div>
+    <div>{{ summ.sentence }}</div>
+    {% if summ.low %}<div class="text-secondary small mt-1">Pochi item in una delle finestre (meno di {{ cfg.min_samples }}): indicazione da prendere con cautela.</div>{% endif %}
+  </div></div>
+
+  <div class="row row-cards mt-1">
+    {% for k in summ.kpis %}
     <div class="col-6 col-lg-3">
       <div class="card kpi"><div class="card-body">
         <div class="subheader">{{ k.label }}</div>
-        <div class="h1">{{ k.value }}{% if k.unit %}<span class="unit">{{ k.unit }}</span>{% endif %}</div>
+        <div class="h1">{{ k.value }}<span class="unit">{{ k.unit }}</span>
+          <span class="badge {{ k.cls }} ms-1 align-middle">{{ k.delta }}</span></div>
         <div class="text-secondary small">{{ k.note }}</div>
       </div></div>
     </div>
     {% endfor %}
   </div>
+
+  <div class="row row-cards mt-1">
+    <div class="col-lg-6">
+      <div class="card h-100"><div class="card-header"><h3 class="card-title">Per il business</h3></div>
+        <div class="card-body"><ul class="mb-0 msg">{% for m in summ.biz %}<li>{{ m }}</li>{% endfor %}</ul></div></div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100"><div class="card-header"><h3 class="card-title">Per il team di sviluppo</h3></div>
+        <div class="card-body"><ul class="mb-0 msg">{% for m in summ.dev %}<li>{{ m }}</li>{% endfor %}</ul></div></div>
+    </div>
+  </div>
+
+  <div class="row row-cards mt-1">
+    <div class="col-lg-7">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Ultimo periodo rispetto allo storico</h3></div>
+        <div class="scroll-x">
+        <table class="table table-vcenter card-table">
+          <thead><tr><th>Metrica</th><th class="num">Storico</th>
+            {% for x in summ.rec %}<th class="num">Ultimi {{ x }} gg</th><th class="num">vs storico</th>{% endfor %}</tr></thead>
+          <tbody>{% for r in summ.rows %}
+            <tr><td>{{ r.label }}</td><td class="num">{{ r.hist }}</td>
+              {% for x in r.rec %}<td class="num">{{ x.v }}</td><td class="num"><span class="badge {{ x.cls }}" title="{{ x.trend }}">{{ x.delta }}</span></td>{% endfor %}</tr>
+          {% endfor %}</tbody>
+        </table>
+        </div>
+        <div class="card-footer text-secondary small">Verde = meglio, rosso = peggio, grigio = entro &plusmn;{{ "%.0f"|format(cfg.trend_tolerance * 100) }}%.
+          Tempi in giorni di calendario sugli item consegnati nella finestra. Item per finestra: {% for x in summ.rec %}ultimi {{ x }} gg {{ summ.n["r" ~ x] }}{% if not loop.last %}, {% endif %}{% endfor %}.</div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Dove va il tempo</h3></div>
+        <div class="card-body"><div id="chartPhases" class="chart chart-xs"></div>
+          <div class="text-secondary small">Quota del tempo totale (creazione &rarr; produzione) degli item consegnati, per fase.</div></div>
+      </div>
+    </div>
+  </div>
+
+  </section>
+
+  {% macro kpi_card(k) %}
+  <div class="card kpi kpi-spark{% if k.low %} kpi-low{% endif %}{% if k.total %} kpi-total{% endif %}">
+    <div class="card-body pb-1">
+      <div class="subheader text-truncate" title="{{ k.label }}">{% if k.color %}<span class="dot" style="background:{{ k.color }}"></span>{% endif %}{{ k.label }}</div>
+      <div class="d-flex align-items-baseline flex-wrap gap-2">
+        <div class="h1 mb-0">{{ k.value }}<span class="unit">{{ k.unit }}</span></div>
+        <span class="badge {{ k.cls }}" title="rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }})">{{ k.delta }}</span>
+      </div>
+      <div class="text-secondary small">{{ k.note }}{% if k.low %} &middot; <span class="text-warning">poco affidabile</span>{% endif %}</div>
+    </div>
+    {% if k.spark %}<div class="spark" data-spark="{{ k.spark }}" aria-hidden="true"></div>{% endif %}
+  </div>
+  {% endmacro %}
+
+  {# selettore 7/14/30/60 gg (nav-segmented di Tabler) + un gruppo di card KPI per soglia #}
+  {% macro kpi_days_tabs(prefix, groups, since) %}
+  <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+    <div class="kpi-caption small text-secondary me-auto mb-0">% di item arrivati in produzione <b>entro <span data-days-label="{{ prefix }}">{% for g in groups if g.default %}{{ g.days }}{% endfor %}</span> giorni</b> {{ since }}</div>
+    <nav class="nav nav-segmented nav-sm kpi-days" role="tablist" aria-label="Soglia in giorni" data-kpi-tabs="{{ prefix }}">
+      {% for g in groups %}
+      <button type="button" class="nav-link{% if g.default %} active{% endif %}" role="tab" data-days="{{ g.days }}"
+        aria-selected="{{ 'true' if g.default else 'false' }}" aria-controls="kpi-{{ prefix }}-{{ g.days }}">{{ g.days }} gg</button>
+      {% endfor %}
+    </nav>
+  </div>
+  {% for g in groups %}
+  <div class="row row-cards mb-3" id="kpi-{{ prefix }}-{{ g.days }}" role="tabpanel"{% if not g.default %} hidden{% endif %}>
+    {% for k in g.cards %}<div class="col-6 col-md-4 col-xl-2">{{ kpi_card(k) }}</div>{% endfor %}
+  </div>
+  {% endfor %}
+  {% endmacro %}
+
+  {% macro period_line() %}
+  <div class="period-line small text-secondary">Ultimi <b>{{ tk.win.months }} mesi</b> ({{ tk.win.last }}) rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }})</div>
+  {% endmacro %}
+
+  {% macro info_title() %}<h3 class="subsection-title info-title">{{ icon("info") }} Info</h3>{% endmacro %}
+
+  <section class="main-pane" id="pane-issue" role="tabpanel" aria-label="Issue" hidden>
+  <h2 class="section-title">Issue: dove si accumula il tempo</h2>
+  <div class="period-line small text-secondary">Issue degli ultimi <b>{{ tk.win.months }} mesi</b> ({{ tk.win.last }}): aperte a fine dati o chiuse nel periodo</div>
+  {% set ik = tk.issue %}
+  <div class="row row-cards mb-3">
+    <div class="col-sm-6 col-xl-3">
+      <div class="card kpi h-100"><div class="card-body">
+        <div class="subheader">Issue degli ultimi {{ tk.win.months }} mesi</div>
+        <div class="h1 mb-0">{{ ik.n }}<span class="unit">issue</span></div>
+        <div class="text-secondary small">{{ ik.open }} aperte &middot; <b>{{ ik.any }}</b> ({{ ik.any_pct }}%) con almeno un'anomalia</div>
+      </div></div>
+    </div>
+    {% for p in ik.phases %}
+    <div class="col-sm-6 col-xl-3">
+      <div class="card kpi h-100"><div class="card-body">
+        <div class="subheader">Anomalie &middot; {{ p.label }}</div>
+        <div class="h1 mb-0">{{ p.pct }}<span class="unit">% delle issue</span></div>
+        <div class="progress progress-separated progress-sm my-2" title="{{ p.red }} oltre P{{ ik.p_hi }}, {{ p.n - p.red }} solo oltre P{{ ap[0] }}">
+          <div class="progress-bar bg-red" style="width: {{ p.red_w }}%"></div>
+          <div class="progress-bar bg-yellow" style="width: {{ p.yellow_w }}%"></div>
+        </div>
+        <div class="text-secondary small">{{ p.n }} issue, di cui <b>{{ p.red }}</b> oltre il P{{ ik.p_hi }}</div>
+      </div></div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="card">
+    <div class="card-body d-flex flex-wrap gap-2 align-items-center">
+      <input id="fSearch" type="search" class="form-control form-control-sm" style="max-width:240px" placeholder="Cerca key o titolo">
+      <select id="fType" class="form-select form-select-sm" style="max-width:200px"><option value="">Tutti i tipi</option></select>
+      <select id="fPeriod" class="form-select form-select-sm" style="max-width:220px" aria-label="Periodo">
+        <option value="recent">Ultimi {{ tk.win.months }} mesi</option><option value="">Tutto il periodo</option></select>
+      <select id="fState" class="form-select form-select-sm" style="max-width:170px">
+        <option value="">Aperti e chiusi</option><option value="open">Solo aperti</option><option value="closed">Solo chiusi</option></select>
+      <span class="d-inline-flex align-items-center info-wrap">
+        <label class="form-check form-check-inline mb-0 me-1"><input id="fAnom" type="checkbox" class="form-check-input"> <span class="form-check-label">Solo anomalie</span></label>
+        <button type="button" class="btn btn-icon btn-ghost-secondary btn-sm info-btn" id="anomInfoBtn" aria-expanded="false" aria-controls="anomInfo" aria-label="Cosa sono le anomalie">{{ icon("info") }}</button>
+        <div class="card info-pop shadow" id="anomInfo" role="dialog" aria-label="Cosa sono le anomalie" hidden>
+          <div class="card-body small">
+            <div class="fw-bold mb-1">Cosa sono le anomalie</div>
+            <p class="mb-2">Una fase (attesa, lavoro, attesa rilascio o totale) durata <b>molto pi&ugrave; del solito</b> rispetto alle issue simili:
+              il confronto &egrave; con le issue gi&agrave; consegnate della <b>stessa classe</b> (Bug con Bug, Story con Story&hellip;) sull'intero periodo.
+              Se la classe ha meno di {{ cfg.min_samples }} issue consegnate, il confronto &egrave; con tutte.</p>
+            <ul class="mb-2 ps-3">
+              <li><span class="legend-swatch f1"></span><b>gialla</b>: pi&ugrave; lenta dell'{{ ap[0] }}% delle issue della classe (oltre il P{{ ap[0] }});</li>
+              <li><span class="legend-swatch f2"></span><b>rossa</b>: pi&ugrave; lenta del {{ ap[1] }}% (oltre il P{{ ap[1] }}), fra le pi&ugrave; lente in assoluto;</li>
+              <li>sotto {{ cfg.anomaly_min_days }} giorno una fase non &egrave; mai anomala.</li>
+            </ul>
+            <p class="mb-2">Per gli item <b>aperti</b> conta il tempo trascorso finora: una cella rossa indica un item gi&agrave; pi&ugrave; lento di quasi tutti i consegnati, da sbloccare.</p>
+            <p class="mb-0 text-secondary">Si usano percentili e mediana, non la media: pochi item lunghissimi alzerebbero la media nascondendo i ritardi.
+              &laquo;Solo anomalie&raquo; mostra le issue con almeno una cella gialla o rossa.</p>
+          </div>
+        </div>
+      </span>
+      <span class="ms-auto text-secondary small" id="fCount"></span>
+    </div>
+    <div class="legend-bar small text-secondary" aria-label="Legenda">
+      <span class="fw-semibold text-body me-1">Legenda</span>
+      <span class="legend-item"><span class="legend-cell f1">12.0</span> oltre il P{{ ap[0] }} della classe</span>
+      <span class="legend-item"><span class="legend-cell f2">48.0</span> oltre il P{{ ap[1] }} della classe</span>
+      <span class="legend-item"><span class="legend-cell">12.0<span class="x">&times;3.2</span></span> 3,2 volte la mediana della classe (passa il mouse per il valore)</span>
+      <span class="legend-item"><span class="badge bg-blue-lt">aperto</span> tempo trascorso finora</span>
+    </div>
+    <div class="scroll-x">
+    <table class="table table-vcenter card-table table-sm issues">
+      <thead><tr>
+        <th data-sort="k">Key</th><th data-sort="s">Titolo</th><th data-sort="t">Tipo</th><th data-sort="st">Stato</th>
+        <th class="num" data-sort="0">Attesa</th><th class="num" data-sort="1">Lavoro</th>
+        <th class="num" data-sort="2">Attesa rilascio</th><th class="num" data-sort="3">Totale</th>
+      </tr></thead>
+      <tbody id="issueRows"></tbody>
+    </table>
+    </div>
+    <div class="card-footer d-flex flex-wrap gap-2 align-items-center small">
+      <span class="text-secondary">Ordina cliccando sulle intestazioni delle colonne.</span>
+      <span class="ms-auto d-flex gap-1"><button class="btn btn-sm" id="pPrev">&lsaquo;</button><span id="pInfo" class="align-self-center"></span><button class="btn btn-sm" id="pNext">&rsaquo;</button></span>
+    </div>
+  </div>
+
+  {{ info_title() }}
+  <div class="card"><div class="card-body info-body">
+    <p>Ogni issue (esclusi {{ cfg.exclude_issue_types|join(", ") }}) con il tempo diviso in fasi, in giorni di calendario. Per gli item aperti &egrave; il tempo trascorso finora.
+      <b>Attesa</b> = stati di coda ({{ cfg.queue_statuses|join(", ") }}), anche se l'item ci torna dopo essere stato preso in carico;
+      <b>Lavoro</b> = tutti gli stati attivi (sviluppo e test); <b>Attesa rilascio</b> = {{ cfg.release_wait_statuses|join(" + ") }}.</p>
+    <p class="mb-0">Le card in alto considerano le issue degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}): aperte alla fine dei dati oppure chiuse nel periodo, consegnate o scartate.
+      Il filtro &laquo;Periodo&raquo; della tabella parte dalle stesse issue; &laquo;Tutto il periodo&raquo; le mostra tutte.
+      Contano le issue con la fase oltre il P{{ ap[0] }} della propria classe:
+      nella barra, in rosso quelle oltre il P{{ ap[1] }}, in giallo le altre. Una issue pu&ograve; essere anomala in pi&ugrave; fasi.</p>
+  </div></div>
+  </section>
 
   {% macro forecast_card(prefix, data, with_pickup) %}
   <div class="card">
@@ -99,39 +414,57 @@
   </div>
   {% endmacro %}
 
-  <h2 class="section-title">1. Lead time: se entrasse oggi in board, quando arriva in produzione?</h2>
-  <p class="section-sub">Stima dal lead time storico (creazione &rarr; ingresso in Done), in <b>giorni di calendario</b>.
-    P85 significa che nell'85% dei casi &egrave; andata cos&igrave; o meglio. &laquo;Tutti&raquo; comprende tutti gli item consegnati, anche Task e Speciali.</p>
+  <section class="main-pane" id="pane-tempi" role="tabpanel" aria-label="Lead time / Cycle time" hidden>
+  <h2 class="section-title">Lead time / Cycle time</h2>
+  {{ period_line() }}
   {% if missing %}
-  <div class="alert alert-info" role="alert"><div>
+  <div class="alert alert-info mt-3" role="alert"><div>
     L'export non contiene {{ missing|length }} {{ "campo" if missing|length == 1 else "campi" }} usat{{ "o" if missing|length == 1 else "i" }} dalle regole di classificazione: <b>{{ missing|join(", ") }}</b>.
     Le classi che ne dipendono (Expedite, Story progettuali) risultano vuote o non distinte.
   </div></div>
   {% endif %}
-  {{ forecast_card("lead", forecast, true) }}
 
+  <h3 class="subsection-title">Lead time: se entrasse oggi in board, quando arriva in produzione?</h3>
+  {{ kpi_days_tabs("lead", tk.lead, "dalla creazione") }}
+  {{ forecast_card("lead", forecast, true) }}
   <div class="card mt-3">
     <div class="card-header"><h3 class="card-title">Andamento mensile del lead time</h3></div>
     <div class="card-body"><div id="chartLead" class="chart chart-sm"></div>
       <div class="text-secondary small">Per mese di produzione. Le barre indicano quanti item sono stati consegnati nel mese.</div></div>
   </div>
 
-  <h2 class="section-title">2. Cycle time: se l'item entra direttamente in {{ cfg.cycle_start_status }}</h2>
-  <p class="section-sub">Per un item urgente, <b>uno solo alla volta</b>, che salta la coda: tempo dal primo ingresso in <b>{{ cfg.cycle_start_status }}</b> all'ingresso in Done,
-    in giorni di calendario. Sono considerati solo gli item passati da {{ cfg.cycle_start_status }}.</p>
+  <h3 class="subsection-title mt-4">Cycle time: se l'item entra direttamente in {{ cfg.cycle_start_status }}</h3>
+  {{ kpi_days_tabs("cycle", tk.cycle, "dal primo ingresso in " ~ cfg.cycle_start_status) }}
   {{ forecast_card("cyc", cycle, false) }}
-
   <div class="card mt-3">
     <div class="card-header"><h3 class="card-title">Andamento mensile del cycle time</h3></div>
     <div class="card-body"><div id="chartCycle" class="chart chart-sm"></div>
       <div class="text-secondary small">Per mese di produzione. Le barre indicano quanti item con cycle time sono stati consegnati nel mese.</div></div>
   </div>
 
-  <h2 class="section-title">3. Come sta il backlog?</h2>
-  {% if open_n < 30 %}
+  {{ info_title() }}
+  <div class="card"><div class="card-body info-body">
+    <p><b>Lead time</b>: stima dal lead time storico (creazione &rarr; ingresso in Done), in <b>giorni di calendario</b>.
+      P85 significa che nell'85% dei casi &egrave; andata cos&igrave; o meglio. &laquo;Tutti&raquo; comprende tutti gli item consegnati, anche Task e Altro.</p>
+    <p><b>Cycle time</b>: per un item urgente, <b>uno solo alla volta</b>, che salta la coda: tempo dal primo ingresso in <b>{{ cfg.cycle_start_status }}</b> all'ingresso in Done,
+      in giorni di calendario. Sono considerati solo gli item passati da {{ cfg.cycle_start_status }}.</p>
+    <p class="mb-0"><b>KPI</b>: quota di item consegnati negli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) arrivati in produzione entro N giorni (scegli N con i tab {{ tk.lead|map(attribute="days")|join(" / ") }} gg sopra le card),
+      e variazione in <b>punti percentuali</b> rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }}): verde = meglio, rosso = peggio, grigio = entro &plusmn;{{ cfg.kpi_tolerance_pp }} pp.
+      Il mini-grafico &egrave; l'<b>andamento cumulato</b>: a ogni settimana, la quota calcolata su tutte le consegne dall'inizio del confronto.
+      Con meno di {{ cfg.min_samples }} item nel periodo la card &egrave; segnata come poco affidabile.</p>
+  </div></div>
+  </section>
+
+  <section class="main-pane" id="pane-backlog" role="tabpanel" aria-label="Backlog" hidden>
+  <h2 class="section-title">Backlog: come sta la coda?</h2>
+  {{ period_line() }}
+  <div class="row row-cards mt-1 mb-3">
+    {% for k in tk.backlog %}<div class="col-md-4">{{ kpi_card(k) }}</div>{% endfor %}
+  </div>
+  {% if not src.has_all %}
   <div class="alert alert-warning" role="alert"><div>
-    <b>Attenzione:</b> l'export contiene solo {{ open_n }} item non chiusi. Il backlog &laquo;oggi&raquo; non &egrave; misurabile: serve un export (stessa query PS, stessi campi) che includa anche gli item aperti.
-    Il grafico &egrave; <i>ricostruito dalle transizioni</i> e vale solo per il passato, sottostimando il backlog (gli item mai chiusi o cancellati non compaiono).
+    <b>Backlog sottostimato:</b> &egrave; stato fornito solo l'export delle issue consegnate, quindi gli item ancora aperti (o chiusi senza passare da {{ cfg.done_status }}) non compaiono.
+    Per un backlog corretto indica l'export di <b>tutte</b> le issue del periodo (stessa query, stessi campi) con <code>input_all</code> in config o <code>--input-all</code>.
   </div></div>
   {% endif %}
   <div class="card">
@@ -149,7 +482,46 @@
   <div class="alert alert-info mt-3" role="alert"><div>Bonifica di massa rilevata nei giorni: {{ bulk|join(", ") }}. Quegli ingressi in Done non sono considerati produzione per il lead time, ma chiudono gli item nel backlog ricostruito (si vede come un calo brusco).</div></div>
   {% endif %}
 
-  <h2 class="section-title">4. Quanti item in produzione, mese per mese</h2>
+  {{ info_title() }}
+  <div class="card"><div class="card-body info-body">
+    <p>Quanti item erano aperti <b>a fine mese</b>, ricostruiti dalle transizioni di stato dell'export. Le barre sono il <b>backlog</b>,
+      cio&egrave; gli item in coda e non ancora presi in carico ({{ cfg.queue_statuses|join(", ") }}), divisi per classe; la linea tratteggiata &egrave; il <b>WIP</b>,
+      gli item in lavorazione (tutti gli altri stati non chiusi, compresa l'attesa di rilascio). Un item esce dal conteggio quando entra in uno stato chiuso
+      ({{ cfg.closed_statuses|join(", ") }}), anche se scartato. Esclusi {{ cfg.exclude_issue_types|join(", ") }}; l'ultimo mese &egrave; fotografato all'ultima data presente nei dati ({{ end }}).
+      Un backlog che cresce mese dopo mese indica che entra pi&ugrave; lavoro di quanto se ne consegna; un WIP alto allunga i tempi di tutti.</p>
+    <p>{% if src.has_all %}Backlog calcolato sull'export completo: {{ src.both + src.only_all }} issue, di cui {{ src.open }} aperte alla fine dei dati.
+      {% else %}Senza l'export completo il backlog considera solo le issue consegnate ed &egrave; sottostimato.{% endif %}</p>
+    <p class="mb-0"><b>KPI</b>: &laquo;In attesa&raquo; e &laquo;In lavorazione&raquo; sono gli item alla fine dei dati ({{ end }}) confrontati con {{ tk.win.months }} mesi prima
+      (meno &egrave; meglio); &laquo;Consegnati&raquo; sono le consegne degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) contro i {{ tk.win.months }} precedenti ({{ tk.win.prev }}).
+      Mini-grafici: andamento settimanale dall'inizio del confronto; per le consegne &egrave; il totale progressivo.</p>
+  </div></div>
+  </section>
+
+  <section class="main-pane" id="pane-deployments" role="tabpanel" aria-label="Deployments" hidden>
+  <h2 class="section-title">Deployments: quanti item in produzione</h2>
+  {{ period_line() }}
+  {% set dk = tk.deploy %}
+  <div class="row row-cards mt-1 mb-3">
+    <div class="col-lg-4">
+      <div class="card kpi h-100"><div class="card-body">
+        <div class="subheader">Consegnati in produzione &middot; ultimi {{ tk.win.months }} mesi</div>
+        <div class="d-flex align-items-baseline flex-wrap gap-2">
+          <div class="h1 mb-0 kpi-big">{{ dk.value }}<span class="unit">item</span></div>
+          <span class="badge {{ dk.cls }}" title="rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }})">{{ dk.delta }}</span>
+        </div>
+        <div class="text-secondary small mt-1">{{ tk.win.last }}</div>
+        <div class="hr my-3"></div>
+        <div class="d-flex justify-content-between small"><span class="text-secondary">{{ tk.win.months }} mesi precedenti</span><b>{{ dk.before }}</b></div>
+        <div class="d-flex justify-content-between small mt-1"><span class="text-secondary">Media a settimana (ultimi {{ tk.win.months }} mesi)</span><b>{{ dk.per_week }}</b></div>
+      </div></div>
+    </div>
+    <div class="col-lg-8">
+      <div class="card h-100">
+        <div class="card-header"><h3 class="card-title">Andamento progressivo</h3></div>
+        <div class="card-body"><div id="chartDeployCum" class="chart chart-xs"></div></div>
+      </div>
+    </div>
+  </div>
   <div class="card">
     <div class="card-body"><div id="chartThroughput" class="chart"></div></div>
     <div class="scroll-x">
@@ -162,9 +534,187 @@
     </div>
   </div>
 
-  <h2 class="section-title">Note metodologiche</h2>
+  {{ info_title() }}
+  <div class="card"><div class="card-body info-body">
+    <p>Item entrati in <b>{{ cfg.done_status }}</b> (= produzione) in ciascun mese, divisi per classe; la linea tratteggiata &egrave; il totale del mese, per leggere l'andamento.
+      Si contano solo gli item validi (stessi filtri del lead time: tipi e Resolution esclusi, giorni di bonifica ignorati); l'ultimo mese pu&ograve; essere parziale (dati fino al {{ end }}).</p>
+    <p class="mb-0"><b>KPI</b>: consegne degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) contro i {{ tk.win.months }} precedenti ({{ tk.win.prev }}).
+      L'<b>andamento progressivo</b> sovrappone i due periodi giorno per giorno (giorno 1 = inizio del periodo): se la linea piena sta sopra quella tratteggiata,
+      a parit&agrave; di giorni si &egrave; consegnato di pi&ugrave;.</p>
+  </div></div>
+  </section>
+
+  {% macro faq(q, open=false) %}
+  <details class="faq-item"{% if open %} open{% endif %}><summary>{{ q }}</summary><div class="faq-a">{{ caller() }}</div></details>
+  {% endmacro %}
+
+  <section class="main-pane" id="pane-faq" role="region" aria-label="Metodologia" hidden>
+  <h2 class="section-title">Metodologia: domande e risposte</h2>
+  <div class="period-line small text-secondary">Come nascono e come si leggono i numeri del report, in parole semplici. Clicca su una domanda per aprire la risposta.</div>
+
+  <div class="row row-cards">
+  <div class="col-lg-6">
+
+  <div class="card faq-group"><div class="card-header"><h3 class="card-title">I dati</h3></div><div class="card-body">
+    {% call faq("Da dove arrivano i numeri?") %}
+      Da due esportazioni di Jira: una con le attivit&agrave; arrivate in produzione nel periodo, una (facoltativa) con <b>tutte</b> le attivit&agrave;, anche quelle ancora aperte.
+      Per ogni attivit&agrave; sappiamo quando &egrave; nata e quando &egrave; passata da uno stato all'altro (es. da &laquo;To Do&raquo; a &laquo;In Progress&raquo;).
+      Nel report un'attivit&agrave; si chiama anche <i>issue</i> o <i>item</i>.
+    {% endcall %}
+    {% call faq("Quando un'attività è \"consegnata\"?") %}
+      Quando entra nello stato <b>{{ cfg.done_status }}</b>, che per il team significa &laquo;in produzione&raquo;.
+      Se ci entra pi&ugrave; volte, conta {{ "l'ultima" if cfg.done_pick == "last" else "la prima" }}.
+    {% endcall %}
+    {% call faq("Quali attività non vengono conteggiate?") %}
+      <ul class="mb-0">
+        <li>i contenitori o i pezzi di altre attivit&agrave;: {{ cfg.exclude_issue_types|join(", ") }};</li>
+        <li>quelle chiuse senza essere fatte (es. &laquo;Won't Do&raquo;, &laquo;Duplicate&raquo;): non sono consegne;</li>
+        <li>i giorni di &laquo;pulizia&raquo; in cui pi&ugrave; di {{ cfg.bulk_done_threshold }} attivit&agrave; sono state chiuse in blocco{% if bulk %} ({{ bulk|join(", ") }}){% endif %}: non sono rilasci veri.</li>
+      </ul>
+    {% endcall %}
+    {% call faq("Cosa sono le \"classi\"?") %}
+      Gruppi di attivit&agrave; simili: Bug, Story, Task, Engine, <b>Expedite</b> (le urgenze, con l'etichetta &laquo;Expedite&raquo;) e Altro.
+      Si confrontano sempre attivit&agrave; della stessa classe: un bug con i bug, non con un progetto di mesi.
+    {% endcall %}
+    {% call faq("I giorni sono lavorativi?") %}
+      No, sono giorni di <b>calendario</b>, weekend e festivi compresi: chi aspetta una consegna li conta tutti.
+    {% endcall %}
+  </div></div>
+
+  <div class="card faq-group mt-3"><div class="card-header"><h3 class="card-title">I tempi</h3></div><div class="card-body">
+    {% call faq("Cos'è il lead time?") %}
+      Il tempo <b>totale</b> da quando un'attivit&agrave; viene creata a quando arriva in produzione. &Egrave; l'attesa vista da chi l'ha chiesta.
+    {% endcall %}
+    {% call faq("E il cycle time?") %}
+      Il tempo da quando qualcuno <b>inizia a lavorarci</b> (primo ingresso in &laquo;{{ cfg.cycle_start_status }}&raquo;) a quando arriva in produzione.
+      Non conta la coda iniziale: misura quanto &egrave; veloce il team una volta partito. Le attivit&agrave; mai passate da &laquo;{{ cfg.cycle_start_status }}&raquo; non hanno cycle time.
+    {% endcall %}
+    {% call faq("In quali fasi si divide il tempo di un'attività?") %}
+      <ul class="mb-0">
+        <li><b>Attesa</b>: in coda, nessuno ci lavora ({{ cfg.queue_statuses|join(", ") }});</li>
+        <li><b>Lavoro</b>: sviluppo e test;</li>
+        <li><b>Attesa rilascio</b>: il lavoro &egrave; finito, ma l'attivit&agrave; aspetta il collaudo o la messa in produzione ({{ cfg.release_wait_statuses|join(", ") }}).</li>
+      </ul>
+      Spesso il tempo si perde nelle attese, non nel lavoro.
+    {% endcall %}
+  </div></div>
+
+  <div class="card faq-group faq-key mt-3"><div class="card-header"><h3 class="card-title">I percentili (il concetto chiave)</h3></div><div class="card-body">
+    {% call faq("Cos'è un percentile?", open=true) %}
+      Metti in fila tutte le attivit&agrave;, dalla pi&ugrave; veloce alla pi&ugrave; lenta.
+      Il <b>percentile 85</b> (P85) &egrave; il tempo entro cui &egrave; arrivato l'85% di loro: solo 15 su 100 hanno impiegato di pi&ugrave;.
+    {% endcall %}
+    {% call faq("Un esempio?") %}
+      &laquo;P85 dei Bug = 27 giorni&raquo; vuol dire: su 100 bug, 85 sono arrivati in produzione entro 27 giorni.
+      Se oggi prometto &laquo;entro 27 giorni&raquo;, ho 85 probabilit&agrave; su 100 di mantenere la promessa.
+    {% endcall %}
+    {% call faq("Cosa vogliono dire P50, P85 e P95?") %}
+      <ul class="mb-0">
+        <li><b>P50</b> (mediana): met&agrave; prima, met&agrave; dopo. &Egrave; il caso tipico.</li>
+        <li><b>P85</b>: la stima da usare per promettere una data.</li>
+        <li><b>P95</b>: quasi tutte. Oltre ci sono solo i casi eccezionali.</li>
+      </ul>
+    {% endcall %}
+    {% call faq("Perché non usare la media?") %}
+      Perch&eacute; bastano poche attivit&agrave; rimaste ferme per mesi a gonfiarla: la media direbbe che &laquo;in media&raquo; serve molto pi&ugrave; tempo di quanto succeda davvero.
+      Il percentile non si fa trascinare dai casi estremi.
+    {% endcall %}
+    {% call faq("Perché proprio 85?") %}
+      &Egrave; un buon compromesso: abbastanza alto da essere affidabile, ma non dominato dai pochi casi eccezionali come il 95.
+    {% endcall %}
+  </div></div>
+
+  </div>
+  <div class="col-lg-6">
+
+  <div class="card faq-group"><div class="card-header"><h3 class="card-title">Previsioni e KPI</h3></div><div class="card-body">
+    {% call faq("Come si legge \"se entrasse oggi\"?") %}
+      &Egrave; una previsione basata sulle consegne recenti: un'attivit&agrave; che entra oggi arriva entro il P50 in met&agrave; dei casi, entro il P85 in 85 casi su 100.
+      &laquo;Data P85&raquo; &egrave; semplicemente oggi + P85.
+    {% endcall %}
+    {% call faq("Cosa vuol dire \"entro 7 / 14 / 30 / 60 giorni\"?") %}
+      La percentuale di attivit&agrave; consegnate entro quel numero di giorni. I tab sopra le card permettono di cambiare soglia.
+    {% endcall %}
+    {% call faq("Su quale periodo sono calcolati i KPI?") %}
+      Sugli <b>ultimi {{ cfg.kpi_months }} mesi</b>, confrontati con i {{ cfg.kpi_months }} mesi precedenti.
+      Fa eccezione la Sintesi, che confronta gli ultimi {{ cfg.recent_days|join(" e ") }} giorni con tutto il periodo precedente.
+    {% endcall %}
+    {% call faq("Quanto ci si può fidare?") %}
+      Le previsioni valgono se il modo di lavorare resta simile al passato. Con meno di {{ cfg.min_samples }} attivit&agrave; il numero &egrave; segnato come &laquo;poco affidabile&raquo;:
+      troppo pochi casi per trarre conclusioni.
+    {% endcall %}
+  </div></div>
+
+  <div class="card faq-group mt-3"><div class="card-header"><h3 class="card-title">Confronti e tendenze</h3></div><div class="card-body">
+    {% call faq("Cosa significano verde, rosso e grigio?") %}
+      <b>Verde</b> = migliora, <b>rosso</b> = peggiora, <b>grigio</b> = differenza troppo piccola per parlare di cambiamento
+      (entro &plusmn;{{ "%.0f"|format(cfg.trend_tolerance * 100) }}%, o &plusmn;{{ cfg.kpi_tolerance_pp }} punti per le percentuali).
+      &laquo;Migliora&raquo; dipende dal numero: meno giorni o meno attivit&agrave; in coda &egrave; meglio; pi&ugrave; consegne &egrave; meglio.
+    {% endcall %}
+    {% call faq("Cos'è un \"punto percentuale\" (pp)?") %}
+      La differenza tra due percentuali: da 30% a 36% sono <b>+6 pp</b>.
+    {% endcall %}
+    {% call faq("Come si decide che \"il flusso migliora\"?") %}
+      Si guardano quattro indicatori: lead time P50 e P85, cycle time P50, consegne a settimana.
+      Se ne migliorano pi&ugrave; di quanti ne peggiorano, il flusso migliora; se succede il contrario, peggiora; altrimenti &egrave; stabile.
+    {% endcall %}
+    {% call faq("Cosa mostrano i piccoli grafici nelle card?") %}
+      L'andamento settimana per settimana. Per le percentuali &egrave; <b>cumulato</b>: ogni punto conta tutte le consegne dall'inizio del confronto fino a quella settimana.
+    {% endcall %}
+  </div></div>
+
+  <div class="card faq-group mt-3"><div class="card-header"><h3 class="card-title">Anomalie</h3></div><div class="card-body">
+    {% call faq("Quando un'attività è \"anomala\"?") %}
+      Quando una sua fase &egrave; durata pi&ugrave; dell'{{ ap[0] }}% delle attivit&agrave; simili (stessa classe): cella <span class="legend-cell f1">gialla</span>.
+      Oltre il {{ ap[1] }}%: <span class="legend-cell f2">rossa</span>. Sotto {{ cfg.anomaly_min_days }} giorno non &egrave; mai anomala.
+    {% endcall %}
+    {% call faq("Cosa vuol dire \"×3.2\"?") %}
+      Che l'attivit&agrave; ha impiegato 3,2 volte il tempo tipico (la mediana) della sua classe.
+    {% endcall %}
+    {% call faq("Un'attività ancora aperta può essere anomala?") %}
+      S&igrave;: si conta il tempo trascorso finora. Se &egrave; gi&agrave; oltre il {{ ap[1] }}% delle attivit&agrave; simili, &egrave; ferma da troppo e va sbloccata.
+    {% endcall %}
+  </div></div>
+
+  <div class="card faq-group mt-3"><div class="card-header"><h3 class="card-title">Backlog e consegne</h3></div><div class="card-body">
+    {% call faq("Cosa sono backlog e WIP?") %}
+      <b>Backlog</b>: attivit&agrave; in coda, non ancora iniziate. <b>WIP</b> (<i>work in progress</i>): attivit&agrave; iniziate e non ancora in produzione.
+      Troppe attivit&agrave; in corso insieme rallentano tutte: ognuna aspetta le altre.
+    {% endcall %}
+    {% call faq("Come si ricostruisce il backlog dei mesi passati?") %}
+      Ripercorrendo i cambi di stato: per ogni fine mese si guarda in che stato era ogni attivit&agrave;.
+      Serve l'esportazione con tutte le attivit&agrave;: senza, mancano quelle ancora aperte e il backlog risulta pi&ugrave; basso del vero.
+    {% endcall %}
+    {% call faq("Cosa sono i deployments?") %}
+      Il numero di attivit&agrave; arrivate in produzione in un periodo.
+    {% endcall %}
+  </div></div>
+
+  <div class="card faq-group mt-3"><div class="card-header"><h3 class="card-title">Limiti</h3></div><div class="card-body">
+    {% call faq("Cosa questi numeri non possono dire?") %}
+      <ul class="mb-0">
+        <li>Il passato non garantisce il futuro: se cambiano team, priorit&agrave; o processo, le previsioni vanno ricalcolate.</li>
+        <li>I numeri sono buoni quanto Jira: stati aggiornati in ritardo falsano i tempi.</li>
+        <li>Non misurano la dimensione o il valore delle attivit&agrave;, solo i tempi e le quantit&agrave;.</li>
+      </ul>
+    {% endcall %}
+  </div></div>
+
+  </div>
+  </div>
+  </section>
+
+  <h2 class="section-title notes-title">Note metodologiche</h2>
   <div class="card"><div class="card-body">
     <ul class="mb-0">
+      <li>Fonti dati:
+        {% if src.has_all %}export delle consegne + export completo.
+          <span class="badge bg-secondary-lt me-1">in entrambi: {{ src.both }}</span>
+          <span class="badge bg-secondary-lt me-1">solo export completo: {{ src.only_all }}</span>
+          <span class="badge bg-secondary-lt me-1">solo export consegne: {{ src.only_done }}</span>
+          (la colonna <code>fonte</code> di <code>items.csv</code> riporta la provenienza di ogni issue; se una issue &egrave; in entrambi vale la riga dell'export completo).
+        {% else %}solo export delle consegne ({{ src.only_done }} issue): nessun export completo, backlog sottostimato.{% endif %}</li>
+      {% for w in src.warnings %}<li class="text-warning">{{ w }}</li>{% endfor %}
       <li>Produzione = ingresso in <b>{{ cfg.done_status }}</b> ({{ cfg.done_pick }}), escludendo i giorni con pi&ugrave; di {{ cfg.bulk_done_threshold }} ingressi.</li>
       <li>Solo item entrati in Done nel periodo di estrazione: i mesi precedenti non sono nel trend e le finestre sono limitate all'inizio del periodo.</li>
       <li>Item scartati dal calcolo: {% for k, v in excl %}<span class="badge bg-secondary-lt me-1">{{ k }}: {{ v }}</span>{% endfor %}</li>
@@ -172,6 +722,11 @@
     </ul>
   </div></div>
 </div>
+{% if cfg.powered_by %}
+<footer class="report-footer">
+  <div class="wrap">Powered by <b>{{ cfg.powered_by }}</b></div>
+</footer>
+{% endif %}
 
 <script id="report-data" type="application/json">{{ data_json }}</script>
 <script>{{ echarts_js }}</script>
@@ -226,19 +781,132 @@
       o.legend.data = series.map(function (s) { return s.name; });
     }
     if (extraLine) {
-      o.series.push({ name: extraLine.name, type: "line", data: extraLine.data, symbolSize: 8, lineStyle: { width: 3, type: "dashed" }, itemStyle: { color: extraLine.color } });
+      o.series.push({ name: extraLine.name, type: "line", data: extraLine.data, symbolSize: 8, lineStyle: { width: 3, type: "dashed" }, itemStyle: { color: extraLine.color },
+        label: { show: !!extraLine.labels, position: "top", color: t.text, fontWeight: 600 } });
     }
     return o;
   }
 
+  // mini-grafico nelle card KPI: niente assi, solo andamento; tooltip con settimana e valore
+  function spark(t, S) {
+    return {
+      animation: false, grid: { left: 0, right: 0, top: 6, bottom: 0 },
+      xAxis: { type: "category", data: S.x, show: false, boundaryGap: false },
+      yAxis: S.pct ? { type: "value", show: false, min: 0, max: 100 } : { type: "value", show: false, scale: true },
+      tooltip: { trigger: "axis", backgroundColor: t.bg, borderColor: t.line, textStyle: { color: t.text, fontSize: 11 }, padding: [4, 8],
+        formatter: function (p) { var v = p[0].value; return "sett. al " + p[0].axisValue + ": <b>" + (v == null ? "-" : S.pct ? v.toFixed(0) + "%" : v) + "</b>"; } },
+      series: [{ type: "line", data: S.y, smooth: true, symbol: "none", connectNulls: true,
+        lineStyle: { width: 2, color: S.color }, areaStyle: { color: S.color, opacity: .14 } }]
+    };
+  }
+
+  // consegne progressive: ultimi N mesi contro i N precedenti, giorno per giorno
+  function deployCum(t, P) {
+    var o = base(t), n = Math.max(P.last.length, P.prev.length), days = [];
+    for (var i = 1; i <= n; i++) days.push(i);
+    o.tooltip.axisPointer = { type: "line" };
+    o.tooltip.formatter = function (ps) {
+      return "Giorno " + ps[0].axisValue + ps.map(function (p) { return "<br>" + p.marker + p.seriesName + ": <b>" + (p.value == null ? "-" : p.value) + "</b>"; }).join("");
+    };
+    o.xAxis = xAxis(t, days); o.xAxis.name = "giorno"; o.xAxis.nameTextStyle = { color: t.muted }; o.xAxis.axisLabel.interval = 14;
+    o.yAxis = yAxis(t, "item consegnati");
+    o.series = [
+      { name: P.prev_label, type: "line", data: P.prev, symbol: "none", lineStyle: { width: 2, type: "dashed", color: t.muted }, itemStyle: { color: t.muted } },
+      { name: P.last_label, type: "line", data: P.last, symbol: "none", lineStyle: { width: 3, color: "#2e86ab" }, itemStyle: { color: "#2e86ab" },
+        areaStyle: { color: "#2e86ab", opacity: .08 } }
+    ];
+    return o;
+  }
+
+  function phases(t, P) {
+    var o = base(t);
+    o.grid.top = 36; o.grid.right = 20;
+    o.tooltip.valueFormatter = function (v) { return v == null ? "-" : v.toFixed(0) + "%"; };
+    o.yAxis = Object.assign({ type: "category", data: P.cats, inverse: true }, baseAxis(t), { splitLine: { show: false } });
+    o.xAxis = Object.assign({ type: "value", max: 100, axisLabel: { color: t.muted, formatter: "{value}%" } }, { splitLine: { lineStyle: { color: t.line, type: "dashed" } } });
+    o.series = P.series.map(function (s) {
+      return { name: s.name, type: "bar", stack: "tot", data: s.data, barMaxWidth: 28, itemStyle: { color: s.color },
+        label: { show: true, color: "#fff", formatter: function (p) { return p.value >= 8 ? p.value.toFixed(0) + "%" : ""; } } };
+    });
+    return o;
+  }
+
+  // --- tabella issue ---
+  (function issues() {
+    var rows = D.issues, page = 0, PER = 50, sortKey = "max", asc = false;
+    var body = document.getElementById("issueRows"), q = document.getElementById("fSearch"),
+        ty = document.getElementById("fType"), stt = document.getElementById("fState"), an = document.getElementById("fAnom"),
+        per = document.getElementById("fPeriod");
+    Array.from(new Set(rows.map(function (r) { return r.t; }))).sort().forEach(function (t) {
+      var o = document.createElement("option"); o.value = o.textContent = t; ty.appendChild(o);
+    });
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+    function maxf(r) { return Math.max.apply(null, r.f); }
+    function cell(r, i) {
+      var v = r.v[i], m = r.m[i];
+      if (v == null) return '<td class="num">-</td>';
+      var x = m && m >= 0.1 && v > 0 ?'<span class="x">&times;' + (v / m).toFixed(1) + "</span>" : "";
+      var tip = m == null ? "" : ' title="mediana ' + (r.b === "TUTTI" ? "tutti gli item" : esc(r.b)) + ": " + m.toFixed(1) + ' gg"';
+      return '<td class="num f' + r.f[i] + '"' + tip + ">" + v.toFixed(1) + x + "</td>";
+    }
+    function filtered() {
+      var s = q.value.trim().toLowerCase();
+      return rows.filter(function (r) {
+        return (!s || (r.k + " " + r.s).toLowerCase().indexOf(s) >= 0) && (!ty.value || r.t === ty.value) &&
+          (!stt.value || (stt.value === "open") === r.o) && (!per.value || r.r) && (!an.checked || maxf(r) > 0);
+      });
+    }
+    function key(r) {
+      if (sortKey === "max") return [maxf(r), r.v[3] || 0];
+      if (/^\d$/.test(sortKey)) return [r.v[+sortKey] == null ? -1 : r.v[+sortKey]];
+      return [String(r[sortKey]).toLowerCase()];
+    }
+    function draw() {
+      var f = filtered().sort(function (a, b) {
+        var x = key(a), y = key(b);
+        for (var i = 0; i < x.length; i++) { if (x[i] < y[i]) return asc ? -1 : 1; if (x[i] > y[i]) return asc ? 1 : -1; }
+        return 0;
+      });
+      var pages = Math.max(1, Math.ceil(f.length / PER)); page = Math.min(page, pages - 1);
+      body.innerHTML = f.slice(page * PER, page * PER + PER).map(function (r) {
+        var key = r.u ? '<a href="' + esc(r.u) + '" target="_blank" rel="noopener noreferrer" title="Apri ' + esc(r.k) + '">' + esc(r.k) + "</a>" : esc(r.k);
+        return "<tr><td>" + key + '</td><td class="sum" title="' + esc(r.s) + '">' + esc(r.s) + "</td><td>" + esc(r.t) +
+          "</td><td>" + esc(r.st) + (r.o ? ' <span class="badge bg-blue-lt">aperto</span>' : "") + "</td>" +
+          [0, 1, 2, 3].map(function (i) { return cell(r, i); }).join("") + "</tr>";
+      }).join("") || '<tr><td colspan="8" class="text-secondary">Nessuna issue con questi filtri.</td></tr>';
+      document.getElementById("fCount").textContent = f.length + " issue (" + f.filter(function (r) { return maxf(r) > 0; }).length + " con anomalie)";
+      document.getElementById("pInfo").textContent = (page + 1) + " / " + pages;
+    }
+    [q, ty, stt, an, per].forEach(function (el) { el.addEventListener("input", function () { page = 0; draw(); }); });
+    document.getElementById("pPrev").addEventListener("click", function () { page = Math.max(0, page - 1); draw(); });
+    document.getElementById("pNext").addEventListener("click", function () { page++; draw(); });
+    document.querySelectorAll(".issues th[data-sort]").forEach(function (th) {
+      th.addEventListener("click", function () {
+        var k = th.dataset.sort;
+        asc = sortKey === k ? !asc : !/^\d$/.test(k); sortKey = k;
+        document.querySelectorAll(".issues th").forEach(function (x) { x.classList.remove("sorted", "asc"); });
+        th.classList.add("sorted"); if (asc) th.classList.add("asc");
+        draw();
+      });
+    });
+    draw();
+  })();
+
   function render() {
     var t = theme();
     var defs = {
+      chartDeployCum: deployCum(t, D.deploy),
+      chartPhases: phases(t, D.phases),
       chartLead: lead(t, D.lead),
       chartCycle: lead(t, D.cycle),
       chartBacklog: stacked(t, D.backlog.months, D.backlog.series, "item", null, { name: "WIP (totale)", data: D.backlog.wip, color: "#e5833b" }),
-      chartThroughput: stacked(t, D.throughput.months, D.throughput.series, "item in produzione", D.throughput.total)
+      chartThroughput: stacked(t, D.throughput.months, D.throughput.series, "item in produzione", null,
+        { name: "Totale consegne", data: D.throughput.total, color: "#e5833b", labels: true })
     };
+    document.querySelectorAll("[data-spark]").forEach(function (el) {
+      el.id = "spark-" + el.dataset.spark;
+      defs[el.id] = spark(t, D.sparks[el.dataset.spark]);
+    });
     Object.keys(defs).forEach(function (id) {
       if (charts[id]) charts[id].dispose();
       charts[id] = echarts.init(document.getElementById(id), null, { renderer: "svg" });
@@ -270,7 +938,83 @@
     });
   });
   window.addEventListener("resize", function () { Object.keys(charts).forEach(function (k) { charts[k].resize(); }); });
+
+  // --- tab principali: stato nell'hash (#issue...), cosi' il link si puo' condividere e il tasto indietro funziona.
+  //     I pannelli hanno id pane-*: l'hash non corrisponde a nessun elemento e il browser non salta all'ancora. ---
+  //     Oltre ai tab del menu c'e' "Metodologia" (FAQ) nell'intestazione: stesso meccanismo, fuori dalla tablist.
+  var tabLinks = Array.prototype.slice.call(document.querySelectorAll("[data-tab]"));
+  var tabIds = tabLinks.map(function (a) { return a.dataset.tab; });
+  var mainIds = tabIds.filter(function (id) { return document.querySelector('.report-tabs [data-tab="' + id + '"]'); });
+  function showTab(id, focus) {
+    if (tabIds.indexOf(id) < 0) id = tabIds[0];
+    tabLinks.forEach(function (a) {
+      var on = a.dataset.tab === id;
+      a.parentNode.classList.toggle("active", on);
+      if (a.closest(".report-tabs")) {
+        a.setAttribute("aria-selected", on ? "true" : "false");
+        a.tabIndex = on ? 0 : -1;
+      } else if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+      document.getElementById("pane-" + a.dataset.tab).hidden = !on;
+      if (on && focus) a.focus();
+    });
+    // i grafici inizializzati in un tab nascosto hanno larghezza 0: ridimensiona quelli ora visibili
+    Object.keys(charts).forEach(function (k) { charts[k].resize(); });
+  }
+  function fromHash() { showTab(decodeURIComponent(location.hash.slice(1))); }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest && e.target.closest('a[href^="#"]');
+    if (!a || tabIds.indexOf(a.getAttribute("href").slice(1)) < 0) return;
+    e.preventDefault();
+    history.pushState(null, "", a.getAttribute("href"));
+    showTab(a.getAttribute("href").slice(1));
+    window.scrollTo({ top: 0 });
+  });
+  document.querySelector(".report-tabs [role=tablist]").addEventListener("keydown", function (e) {
+    var i = mainIds.indexOf(document.activeElement.dataset && document.activeElement.dataset.tab);
+    if (i < 0 || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+    var id = mainIds[(i + (e.key === "ArrowRight" ? 1 : -1) + mainIds.length) % mainIds.length];
+    history.replaceState(null, "", "#" + id); showTab(id, true); e.preventDefault();
+  });
+  window.addEventListener("popstate", fromHash);
+
+  // --- tab 7/14/30/60 gg sopra le card KPI di lead time e cycle time ---
+  document.querySelectorAll("[data-kpi-tabs]").forEach(function (nav) {
+    var prefix = nav.dataset.kpiTabs, btns = Array.prototype.slice.call(nav.querySelectorAll("[data-days]"));
+    function select(btn, focus) {
+      btns.forEach(function (b) {
+        var on = b === btn;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-selected", on ? "true" : "false");
+        b.tabIndex = on ? 0 : -1;
+        document.getElementById("kpi-" + prefix + "-" + b.dataset.days).hidden = !on;
+      });
+      document.querySelector('[data-days-label="' + prefix + '"]').textContent = btn.dataset.days;
+      if (focus) btn.focus();
+      Object.keys(charts).forEach(function (k) { charts[k].resize(); });   // i mini-grafici erano nascosti
+    }
+    btns.forEach(function (b) {
+      b.tabIndex = b.classList.contains("active") ? 0 : -1;
+      b.addEventListener("click", function () { select(b); });
+    });
+    nav.addEventListener("keydown", function (e) {
+      var i = btns.indexOf(document.activeElement);
+      if (i < 0 || (e.key !== "ArrowRight" && e.key !== "ArrowLeft")) return;
+      select(btns[(i + (e.key === "ArrowRight" ? 1 : -1) + btns.length) % btns.length], true); e.preventDefault();
+    });
+  });
+
+  // --- "i" informativa sulle anomalie: click apre/chiude, Esc o click fuori chiude ---
+  var infoBtn = document.getElementById("anomInfoBtn"), infoPop = document.getElementById("anomInfo");
+  function setInfo(open) { infoPop.hidden = !open; infoBtn.setAttribute("aria-expanded", open ? "true" : "false"); }
+  infoBtn.addEventListener("click", function (e) { e.stopPropagation(); setInfo(infoPop.hidden); });
+  document.addEventListener("click", function (e) { if (!infoPop.hidden && !infoPop.contains(e.target)) setInfo(false); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !infoPop.hidden) { setInfo(false); infoBtn.focus(); } });
+  window.addEventListener("beforeprint", function () {
+    document.querySelectorAll(".faq-item").forEach(function (d) { d.open = true; });   // in stampa tutte le risposte
+    Object.keys(charts).forEach(function (k) { charts[k].resize(); });
+  });
   render();
+  fromHash();
 })();
 </script>
 </body>

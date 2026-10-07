@@ -1,6 +1,13 @@
 # Configurazione del motore. Tutte le regole di business stanno QUI, non nel codice.
-input: data/stf_20260401_20261001_all.csv        # export Status Time Free (unica fonte)
+project_name: PS          # nome del progetto nel titolo del report (vuoto = solo "Flow report")
+powered_by: "Public Site & Digital Acquisition Team"   # firma nel piè di pagina (vuoto = nessuna)
+# Export Status Time Free (stesso formato, stessa query). Sovrascrivibili con --input / --input-all.
+input: data/stf_20260401_20261001_done.csv       # issue entrate in Done nel periodo: lead time, cycle time, deployments
+input_all: data/stf_20260401_20261001_all.csv    # TUTTE le issue del periodo, aperte comprese: backlog corretto e confronto
+                                                 # fra i due export. Facoltativo: vuoto = backlog solo dalle consegne (sottostimato)
 output_dir: out
+# Link di dettaglio della issue nel report: ${issueKey} viene sostituito con la key (es. PS-123). Vuoto = nessun link.
+issue_url: "https://jira.example.com/browse/${issueKey}"
 
 # Chiusura = ingresso in questo stato (DONE = in produzione, per convenzione del team)
 done_status: Done
@@ -23,6 +30,8 @@ default_resolutions: [Unresolved, Open]
 # Stati "coda" (non lavorati) -> backlog; "attesa rilascio"; il resto e' WIP
 queue_statuses: [To Do, Open, Proposed, Proposal Approved, Selected for Development]
 closed_statuses: [Done, Closed, Archived, DISCARDED]
+# Stati di attesa rilascio (lavoro finito, in coda per UAT/produzione): fase separata da "lavoro" nella tabella issue
+release_wait_statuses: [Ready For Acceptance Test, Ready for PROD]
 
 # Classi di lavoro: la prima regola che combacia vince. Campi: issue_types, summary_regex
 classes:
@@ -41,11 +50,11 @@ classes:
     issue_types: [Task]
   - name: Engine
     issue_types: [Engine]
-  - name: Speciali
+  - name: Altro          # stesso nome della classe di ripiego per gli item senza regola: confluiscono insieme
     issue_types: [Analysis, System Engineer Task]
   # altra regola disponibile: summary_regex: "(?i)regex sul titolo"
 
-# Righe mostrate nelle tabelle di lead time e cycle time (+ "Tutti" = tutti gli item validi, anche Task e Speciali)
+# Righe mostrate nelle tabelle di lead time e cycle time (+ "Tutti" = tutti gli item validi, anche Task e Altro)
 report_classes: [Bug, Engine, Expedite, Story (non progettuale)]
 # Cycle time = dal primo ingresso in questo stato alla produzione (item che salta la coda)
 cycle_start_status: In Progress
@@ -56,3 +65,19 @@ percentiles: [50, 85, 95]
 within_days: [7, 14, 30, 60]
 min_samples: 8        # sotto questa soglia la stima e' marcata "poco affidabile"
 trend_months: 6
+
+# Sintesi: confronto degli ultimi N giorni con lo storico (consegne dall'inizio periodo a max(recent_days) giorni fa)
+recent_days: [30, 60]
+trend_tolerance: 0.10   # variazioni entro +/-10% = "stabile"
+
+# KPI in testa ai tab Issue, Lead time / Cycle time, Backlog, Deployments:
+# ultimi kpi_months mesi (fino all'ultimo dato) contro i kpi_months precedenti
+kpi_months: 3
+kpi_within_days: [7, 14, 30, 60]   # KPI lead/cycle time = % di item consegnati entro N giorni (un tab per valore)
+kpi_default_days: 14               # tab aperto all'avvio
+kpi_classes: [Bug, Engine, Expedite, Story (non progettuale), Altro]   # + Tutti
+kpi_tolerance_pp: 5     # variazione della % entro +/-5 punti = "stabile"
+
+# Anomalie nella tabella issue: fase oltre questi percentili della propria classe (intero periodo) = giallo / rosso
+anomaly_percentiles: [85, 95]
+anomaly_min_days: 1     # sotto 1 giorno non e' mai anomalia

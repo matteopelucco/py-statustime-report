@@ -148,25 +148,29 @@ def monthly_leadtime(it, cfg, today, col="lead_days"):
     return l
 
 
+def state_at(it, ev, cfg, t):
+    """Fase (backlog/wip/chiuso) di ogni item all'istante t, ricostruita dalle transizioni (tipi esclusi esclusi)."""
+    base = it[~it["Issue Type"].isin(cfg["exclude_issue_types"])][["Key", "class", "Created"]]
+    e = ev[ev.Key.isin(base.Key) & (ev.ts <= t)].sort_values("ts")
+    last = e.groupby("Key").tail(1).set_index("Key").status
+    st = base.set_index("Key").join(last.rename("status"))
+    st = st[st.Created <= t]
+    st["status"] = st.status.fillna("To Do")
+    st["fase"] = np.where(st.status.isin(cfg["closed_statuses"]), "chiuso",
+                          np.where(st.status.isin(cfg["queue_statuses"]), "backlog", "wip"))
+    return st
+
+
 def snapshots(it, ev, cfg, today):
     """Ricostruisce backlog/WIP a fine mese dalle transizioni. Include TUTTI gli item (anche esclusi
     da lead time) tranne tipi esclusi; item chiusi con Resolution scartata escono dal backlog alla chiusura."""
-    base = it[~it["Issue Type"].isin(cfg["exclude_issue_types"])][["Key", "class", "Created"]]
-    e = ev[ev.Key.isin(base.Key)].sort_values("ts")
-    months = _trend_months(cfg, today)
-    q, closed = set(cfg["queue_statuses"]), set(cfg["closed_statuses"])
     rows = []
-    for m in months:
-        t = min(m.end_time, today)
-        last = e[e.ts <= t].groupby("Key").tail(1).set_index("Key").status
-        st = base.set_index("Key").join(last.rename("status"))
-        st = st[st.Created <= t]
-        st["status"] = st.status.fillna("To Do")
-        st["fase"] = np.where(st.status.isin(closed), "chiuso", np.where(st.status.isin(q), "backlog", "wip"))
+    for m in _trend_months(cfg, today):
+        st = state_at(it, ev, cfg, min(m.end_time, today))
         g = st[st.fase != "chiuso"].groupby(["class", "fase"]).size().unstack(fill_value=0)
         for c, r in g.iterrows():
             rows.append({"month": m, "class": c, "backlog": int(r.get("backlog", 0)), "wip": int(r.get("wip", 0))})
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows, columns=["month", "class", "backlog", "wip"])
 
 
 def backlog_now(it, ev, cfg, today):
@@ -174,3 +178,258 @@ def backlog_now(it, ev, cfg, today):
     o = it[~it["Issue Type"].isin(cfg["exclude_issue_types"]) & ~it.Status.isin(cfg["closed_statuses"])]
     return o[["Key", "Issue Type", "class", "Status", "Created", "Summary"]].assign(
         age_days=(today - o.Created).dt.total_seconds() / 86400)
+
+
+PHASES = ["wait_days", "work_days", "release_days", "flow_days"]
+
+
+def data_end(ev, cfg, today):
+    """Fine dei dati: oggi, ma non oltre period_end ne' oltre l'ultima transizione dell'export."""
+    end = today
+    p_end = period_bounds(cfg)[1]
+    if p_end is not None:
+        end = min(end, p_end)
+    if len(ev):
+        end = min(end, ev.ts.max())
+    return end
+
+
+def phases(it, ev, cfg, end):
+    """Tempo di ogni item diviso in fasi (giorni di calendario): attesa = stati coda (queue_statuses),
+    attesa rilascio = release_wait_statuses, lavoro = tutti gli altri stati non chiusi (dev + test).
+    Il tempo negli stati chiusi non conta; per gli item aperti lo stato attuale conta fino a `end`."""
+    e = ev[ev.Key.isin(it.Key)].sort_values(["Key", "ts"]).copy()
+    e["next"] = e.groupby("Key").ts.shift(-1).fillna(end)
+    e["dur"] = ((e.next - e.ts).dt.total_seconds() / 86400).clip(lower=0)
+    e.loc[e.status.isin(cfg["closed_statuses"]), "dur"] = 0
+    e["phase"] = np.select([e.status.isin(cfg["queue_statuses"]), e.status.isin(cfg.get("release_wait_statuses", []))],
+                           ["wait_days", "release_days"], "work_days")
+    p = e.pivot_table(index="Key", columns="phase", values="dur", aggfunc="sum").reindex(columns=PHASES[:3])
+    out = it.drop(columns=[c for c in it.columns if c in PHASES], errors="ignore").merge(p, left_on="Key", right_index=True, how="left")
+    out[PHASES[:3]] = out[PHASES[:3]].fillna(0)
+    # prima della prima transizione l'item e' in coda; senza transizioni e' in coda fino a end se ancora aperto
+    first = out.Key.map(e.groupby("Key").ts.min())
+    open_ = ~out.Status.isin(cfg["closed_statuses"])
+    gap = (first.fillna(end) - out.Created).dt.total_seconds() / 86400
+    gap = gap.where(first.notna() | open_, 0).clip(lower=0).fillna(0)
+    out["wait_days"] += gap
+    out["flow_days"] = out[PHASES[:3]].sum(axis=1)
+    return out
+
+
+def flag_phases(it, cfg):
+    """Segnala le fasi anomale confrontando ogni item con la distribuzione degli item validi della sua classe
+    (tutto il periodo; se la classe ha meno di min_samples item, con tutti gli item validi).
+    <fase>_flag: 2 = oltre il percentile alto, 1 = oltre quello basso, 0 = nella norma; <fase>_ref = mediana di riferimento."""
+    warn, alert = cfg.get("anomaly_percentiles", [85, 95])
+    min_days = cfg.get("anomaly_min_days", 1)
+    v = it[it.valid]
+    counts = v["class"].value_counts()
+    out = it.copy()
+    out["base_class"] = np.where(out["class"].map(counts).fillna(0) >= cfg["min_samples"], out["class"], "TUTTI")
+    groups = {"TUTTI": v, **{c: g for c, g in v.groupby("class")}}
+    for ph in PHASES:
+        st = {c: (g[ph].median(), g[ph].quantile(warn / 100), g[ph].quantile(alert / 100)) if len(g) else (np.nan,) * 3
+              for c, g in groups.items()}
+        ref = out.base_class.map(lambda c: st.get(c, (np.nan,) * 3))
+        med, p_w, p_a = (ref.map(lambda r, i=i: r[i]).astype(float) for i in range(3))
+        x = out[ph]
+        big = x >= min_days
+        out[ph + "_ref"] = med
+        out[ph + "_flag"] = np.where(big & (x > p_a), 2, np.where(big & (x > p_w), 1, 0))
+    return out
+
+
+# metrica -> (etichetta, unita', cosa e' meglio)
+COMPARE = {
+    "throughput": ("Consegne a settimana", "item", "high"),
+    "lead_p50": ("Lead time P50", "gg", "low"),
+    "lead_p85": ("Lead time P85", "gg", "low"),
+    "cycle_p50": ("Cycle time P50", "gg", "low"),
+    "wait_med": ("Attesa in coda (mediana)", "gg", "low"),
+    "work_med": ("Lavoro dev + test (mediana)", "gg", "low"),
+    "release_med": ("Attesa rilascio (mediana)", "gg", "low"),
+}
+KEY_METRICS = ["throughput", "lead_p50", "lead_p85", "cycle_p50"]
+
+
+def _window_stats(v, days):
+    if not len(v):
+        return {k: np.nan for k in COMPARE} | {"n": 0, "wait_share": np.nan, "work_share": np.nan, "release_share": np.nan}
+    flow = v.flow_days.sum()
+    return {"n": len(v), "throughput": len(v) / days * 7 if days > 0 else np.nan,
+            "lead_p50": v.lead_days.median(), "lead_p85": v.lead_days.quantile(.85), "cycle_p50": v.cycle_days.median(),
+            "wait_med": v.wait_days.median(), "work_med": v.work_days.median(), "release_med": v.release_days.median(),
+            **{f"{p}_share": v[f"{p}_days"].sum() / flow if flow else np.nan for p in ("wait", "work", "release")}}
+
+
+def compare_periods(it, cfg, end):
+    """Ultimi N giorni (recent_days) contro lo storico (consegne dall'inizio periodo fino a max(recent_days) giorni fa).
+    Una riga per metrica; colonne hist, r<N>, delta_r<N> (variazione relativa), trend_r<N> (meglio/peggio/stabile)."""
+    v = it[it.valid & it.prod_date.notna()]
+    rec = sorted(cfg.get("recent_days", [30, 60]))
+    tol = cfg.get("trend_tolerance", 0.10)
+    cut = end - pd.Timedelta(days=rec[-1])
+    start = period_bounds(cfg)[0]
+    if start is None:
+        start = v.prod_date.min() if len(v) else cut
+    wins = {"hist": (start, cut), **{f"r{d}": (end - pd.Timedelta(days=d), end) for d in rec}}
+    stats = {w: _window_stats(v[(v.prod_date >= a) & (v.prod_date < b if w == "hist" else v.prod_date <= b)],
+                              (b - a).total_seconds() / 86400) for w, (a, b) in wins.items()}
+    rows = []
+    for k in list(COMPARE) + ["wait_share", "work_share", "release_share"]:
+        label, unit, better = COMPARE.get(k, (k, "%", None))
+        r = {"metric": k, "label": label, "unit": unit, "better": better, "hist": stats["hist"][k]}
+        for d in rec:
+            x, h = stats[f"r{d}"][k], stats["hist"][k]
+            delta = (x - h) / h if h and h == h and x == x else np.nan
+            trend = "n/d"
+            if better and delta == delta:
+                good = -delta if better == "low" else delta
+                trend = "meglio" if good > tol else "peggio" if good < -tol else "stabile"
+            r |= {f"r{d}": x, f"delta_r{d}": delta, f"trend_r{d}": trend}
+        rows.append(r)
+    out = pd.DataFrame(rows)
+    out.attrs["n"] = {w: s["n"] for w, s in stats.items()}
+    out.attrs["windows"] = wins
+    return out
+
+
+def verdict(cmp, cfg):
+    """Giudizio complessivo sull'ultima finestra piu' lunga: 'migliora', 'peggiora' o 'stabile' (+ punteggio)."""
+    d = max(cfg.get("recent_days", [30, 60]))
+    t = cmp.set_index("metric").loc[KEY_METRICS, f"trend_r{d}"]
+    score = int((t == "meglio").sum() - (t == "peggio").sum())
+    return ("migliora" if score > 0 else "peggiora" if score < 0 else "stabile"), score
+
+
+def sources_check(it, cfg, has_all):
+    """Confronto fra export 'done' e export 'all': quante issue per fonte e incongruenze fra i due perimetri.
+    Senza export 'all' il backlog e' ricostruito solo dagli item consegnati (sottostimato)."""
+    n = it.fonte.value_counts()
+    excl = it["Issue Type"].isin(cfg["exclude_issue_types"])
+    open_ = ~excl & ~it.Status.isin(cfg["closed_statuses"])
+    out = {"has_all": has_all, "both": int(n.get("entrambi", 0)), "only_done": int(n.get("solo done", 0)),
+           "only_all": int(n.get("solo all", 0)), "open": int(open_.sum()), "warnings": []}
+    if has_all:
+        ex = lambda s: ", ".join(s.Key.head(3)) + ("..." if len(s) > 3 else "")
+        miss = it[(it.fonte == "solo all") & it.valid]
+        if len(miss):
+            out["warnings"].append(f"{len(miss)} issue consegnate nel periodo sono solo nell'export completo ({ex(miss)}): "
+                                   "l'export delle consegne potrebbe essere incompleto o estratto in un'altra data.")
+        extra = it[it.fonte == "solo done"]
+        if len(extra):
+            out["warnings"].append(f"{len(extra)} issue dell'export delle consegne mancano nell'export completo ({ex(extra)}): "
+                                   "i due export non coprono lo stesso perimetro.")
+    return out
+
+
+# --- KPI dei tab: ultimi kpi_months mesi contro i kpi_months precedenti ---
+
+def kpi_bounds(cfg, end):
+    """(inizio precedente, taglio, fine): ultimi kpi_months mesi = (taglio, fine], precedenti = (inizio, taglio].
+    L'inizio non va prima di period_start (fuori periodo l'export non ha dati)."""
+    m = cfg.get("kpi_months", 3)
+    cut = end - pd.DateOffset(months=m)
+    start = cut - pd.DateOffset(months=m)
+    p_start = period_bounds(cfg)[0]
+    if p_start is not None:
+        start = max(start, p_start - pd.Timedelta(minutes=1))
+    return start, cut, end
+
+
+def _weeks(start, end):
+    """Fine di ogni settimana da start a end (end compreso)."""
+    w = [t for t in pd.date_range(start, end, freq="7D")[1:] if t < end]
+    return w + [end]
+
+
+def _trend(delta, better, tol):
+    if delta != delta:
+        return "n/d"
+    good = delta if better == "high" else -delta
+    return "meglio" if good > tol else "peggio" if good < -tol else "stabile"
+
+
+def _rel(a, b):
+    return (a - b) / b if b else np.nan
+
+
+def within_kpi(it, cfg, end, col="lead_days", n_days=14):
+    """Per classe (kpi_classes + TUTTI): quota di item consegnati entro n_days giorni (col = lead_days
+    o cycle_days) negli ultimi kpi_months mesi contro i precedenti (delta in punti percentuali) e andamento
+    cumulato settimanale: a ogni settimana, la quota su tutte le consegne dall'inizio del confronto."""
+    start, cut, end = kpi_bounds(cfg, end)
+    tol = cfg.get("kpi_tolerance_pp", 5)
+    v = it[it.valid & it.prod_date.notna() & it[col].notna()]
+    v = v[(v.prod_date > start) & (v.prod_date <= end)]
+    weeks = _weeks(start, end)
+    share = lambda x: float((x[col] <= n_days).mean()) if len(x) else np.nan
+    rows = []
+    for c in list(cfg.get("kpi_classes", [])) + ["TUTTI"]:
+        s = v if c == "TUTTI" else v[v["class"] == c]
+        last, prev = s[s.prod_date > cut], s[s.prod_date <= cut]
+        pl, pp = share(last), share(prev)
+        d = (pl - pp) * 100
+        rows.append({"class": c, "n_last": len(last), "n_prev": len(prev), "pct_last": pl, "pct_prev": pp,
+                     "delta_pp": d, "trend": _trend(d, "high", tol), "weeks": weeks,
+                     "cum": [share(s[s.prod_date <= w]) for w in weeks]})
+    return rows
+
+
+def backlog_kpi(it, ev, cfg, end):
+    """Item in attesa (backlog) e in lavorazione (WIP) a fine dati contro kpi_months mesi prima, consegne degli
+    ultimi kpi_months mesi contro i precedenti; serie settimanali (stato per backlog/WIP, cumulato per le consegne)."""
+    start, cut, end = kpi_bounds(cfg, end)
+    tol = cfg.get("trend_tolerance", 0.10)
+    weeks = _weeks(start, end)
+    cnt = {w: state_at(it, ev, cfg, w).fase.value_counts() for w in [cut] + weeks}
+    out = {}
+    for f in ("backlog", "wip"):
+        now, before = int(cnt[end].get(f, 0)), int(cnt[cut].get(f, 0))
+        out[f] = {"now": now, "before": before, "delta": _rel(now, before), "trend": _trend(_rel(now, before), "low", tol),
+                  "weeks": weeks, "series": [int(cnt[w].get(f, 0)) for w in weeks]}
+    d = it[it.valid & it.prod_date.notna()].prod_date
+    last, prev = int(((d > cut) & (d <= end)).sum()), int(((d > start) & (d <= cut)).sum())
+    out["delivered"] = {"now": last, "before": prev, "delta": _rel(last, prev), "trend": _trend(_rel(last, prev), "high", tol),
+                        "weeks": weeks, "series": [int(((d > start) & (d <= w)).sum()) for w in weeks]}
+    return out
+
+
+def deploy_kpi(it, cfg, end):
+    """Consegne in produzione negli ultimi kpi_months mesi contro i precedenti e andamento progressivo giorno per
+    giorno dei due periodi sovrapposti (giorno 1 = primo giorno del periodo)."""
+    start, cut, end = kpi_bounds(cfg, end)
+    tol = cfg.get("trend_tolerance", 0.10)
+    d = it[it.valid & it.prod_date.notna()].prod_date
+
+    def progressive(a, b):
+        days = int(np.ceil((b - a).total_seconds() / 86400))
+        return [int(((d > a) & (d <= min(a + pd.Timedelta(days=i), b))).sum()) for i in range(1, days + 1)]
+    last, prev = progressive(cut, end), progressive(start, cut)
+    n_last, n_prev = (last[-1] if last else 0), (prev[-1] if prev else 0)
+    return {"now": n_last, "before": n_prev, "delta": _rel(n_last, n_prev), "trend": _trend(_rel(n_last, n_prev), "high", tol),
+            "per_week": n_last / max((end - cut).days, 1) * 7, "last": last, "prev": prev,
+            "bounds": (start, cut, end)}
+
+
+def recent_mask(it, ev, cfg, end):
+    """Issue 'degli ultimi kpi_months mesi': aperte a fine dati oppure chiuse (consegnate o scartate) dopo il taglio.
+    La chiusura e' l'ultima transizione dell'item."""
+    _, cut, _ = kpi_bounds(cfg, end)
+    last = it.Key.map(ev.groupby("Key").ts.max())
+    open_ = ~it.Status.isin(cfg["closed_statuses"])
+    return open_ | ((last > cut) & (last <= end))
+
+
+def anomaly_kpi(it, cfg, mask=None):
+    """Issue del tab Issue (tipi esclusi a parte; solo `mask` se dato, es. recent_mask) e quante hanno anomalie
+    per fase (giallo o rosso)."""
+    v = it[~it["Issue Type"].isin(cfg["exclude_issue_types"]) & (True if mask is None else mask)]
+    n = len(v)
+    out = {"n": n, "open": int((~v.Status.isin(cfg["closed_statuses"])).sum()),
+           "any": int((v[[f"{p}_flag" for p in PHASES]] > 0).any(axis=1).sum())}
+    for p in ("wait", "work", "release"):
+        f = v[f"{p}_days_flag"]
+        out[p] = {"n": int((f > 0).sum()), "red": int((f == 2).sum()), "pct": (f > 0).mean() if n else np.nan}
+    return out

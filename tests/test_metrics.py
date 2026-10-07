@@ -42,7 +42,7 @@ def test_filtri_tipo_e_resolution():
 
 def test_classi():
     it = _prep([("A-1", "Analysis", "x", "Done", "2026-01-01 00:00", "Done", "", "", "", "2026-01-05 00:00")])
-    assert it.loc[0, "class"] == "Speciali"
+    assert it.loc[0, "class"] == "Altro"
 
 
 def test_mese_senza_consegne_appare_a_zero():
@@ -104,3 +104,154 @@ def test_story_progettuale_da_epic_link():
     d["Epic Link"] = ["PS-1", "", "PS-1"]
     d["Labels"] = ["", "", "expedite"]
     assert list(metrics.classify(d, CFG)) == ["Story progettuale", "Story (non progettuale)", "Expedite"]
+
+
+def _df2(rows, statuses):
+    cols = ["Key", "Issue Type", "Summary", "Status", "Created", "Resolution", "Resolved"] + ["'->" + s for s in statuses]
+    d = pd.DataFrame([dict(zip(cols, r)) for r in rows])
+    d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT
+    return d
+
+
+def test_fasi_attesa_lavoro_rilascio():
+    st = ["To Do", "In Progress", "Ready for PROD", "Done"]
+    d = _df2([("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "2026-01-03 00:00", "2026-01-08 00:00", "2026-01-10 00:00"),
+              ("A-2", "Bug", "x", "In Progress", "2026-01-01 00:00", "Unresolved", "", "2026-01-01 00:00", "2026-01-04 00:00", "", "")], st)
+    ev = load.events(d)
+    it = metrics.phases(metrics.prepare(d, ev, CFG), ev, CFG, pd.Timestamp("2026-01-20")).set_index("Key")
+    assert list(it.loc["A-1", ["wait_days", "work_days", "release_days", "flow_days"]]) == [2, 5, 2, 9]
+    assert it.loc["A-1", "flow_days"] == it.loc["A-1", "lead_days"]
+    assert list(it.loc["A-2", ["wait_days", "work_days", "release_days"]]) == [3, 16, 0]   # aperto: lavoro fino a fine dati
+
+
+def test_rientro_in_coda_conta_come_attesa():
+    st = ["To Do", "In Progress", "Done"]
+    d = _df2([("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00,2026-01-03 00:00", "2026-01-02 00:00,2026-01-05 00:00", "2026-01-06 00:00")], st)
+    ev = load.events(d)
+    it = metrics.phases(metrics.prepare(d, ev, CFG), ev, CFG, pd.Timestamp("2026-02-01"))
+    assert it.loc[0, "wait_days"] == 3 and it.loc[0, "work_days"] == 2
+
+
+def _many(n, lead_of, start="2026-01-01"):
+    """n Bug consegnati, uno al giorno; lead_of(i) = giorni di lavoro dell'i-esimo."""
+    rows = []
+    for i in range(n):
+        done = pd.Timestamp(start) + pd.Timedelta(days=i)
+        cr = done - pd.Timedelta(days=lead_of(i))
+        f = lambda t: t.strftime("%Y-%m-%d %H:%M")
+        rows.append((f"A-{i}", "Bug", "x", "Done", f(cr), "Done", "", f(cr), f(done)))
+    d = _df2(rows, ["In Progress", "Done"])
+    ev = load.events(d)
+    it = metrics.prepare(d, ev, CFG)
+    end = metrics.data_end(ev, CFG, pd.Timestamp("2027-01-01"))
+    return metrics.flag_phases(metrics.phases(it, ev, CFG, end), CFG), end
+
+
+def test_anomalie_rispetto_alla_classe():
+    it, _ = _many(40, lambda i: 100 if i == 0 else 5 + i % 5)
+    it = it.set_index("Key")
+    assert it.loc["A-0", "work_days_flag"] == 2 and it.loc["A-0", "work_days_ref"] == 7
+    assert (it.drop("A-0").work_days_flag < 2).all()
+    assert (it.wait_days_flag == 0).all()          # attesa sempre 0: sotto anomaly_min_days
+
+
+def test_confronto_periodi_e_verdetto():
+    # 120 consegne giornaliere: le ultime 60 con lead time dimezzato -> migliora
+    it, end = _many(120, lambda i: 4 if i >= 60 else 8)
+    cmp = metrics.compare_periods(it, CFG, end).set_index("metric")
+    assert cmp.loc["lead_p50", "hist"] == 8 and cmp.loc["lead_p50", "r60"] == 4
+    assert cmp.loc["lead_p50", "trend_r60"] == "meglio" and cmp.loc["throughput", "trend_r60"] == "stabile"
+    assert metrics.verdict(cmp.reset_index(), CFG)[0] == "migliora"
+    it2, end2 = _many(120, lambda i: 12 if i >= 60 else 8)
+    assert metrics.verdict(metrics.compare_periods(it2, CFG, end2), CFG)[0] == "peggiora"
+
+
+def test_url_di_dettaglio_issue():
+    from flowmetrics.report import issue_url
+    assert issue_url({"issue_url": "https://jira.example.com/browse/${issueKey}"}, "PS-12") == "https://jira.example.com/browse/PS-12"
+    assert issue_url({"issue_url": "https://x/?q=${issueKey}&k=${issueKey}"}, "A B") == "https://x/?q=A%20B&k=A%20B"
+    assert issue_url({}, "PS-12") is None and issue_url({"issue_url": ""}, "PS-12") is None
+    assert issue_url({"issue_url": "javascript:alert(1)//${issueKey}"}, "PS-12") is None
+
+
+def test_nome_mese_leggibile():
+    from flowmetrics.report import month_name
+    assert month_name(pd.Period("2026-04")) == "Aprile 2026"
+    assert month_name("2025-12") == "Dicembre 2025"
+
+
+def _csv(path, rows):
+    cols = ["Key", "Issue Type", "Summary", "Status", "Created", "Resolution", "Resolved", "'->To Do", "'->In Progress", "'->Done"]
+    pd.DataFrame([dict(zip(cols, r)) for r in rows]).to_csv(path, index=False)
+
+
+def test_export_completo_unito_a_quello_delle_consegne(tmp_path):
+    _csv(tmp_path / "done.csv", [("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "", "2026-01-05 00:00"),
+                                 ("A-2", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "", "2026-01-06 00:00")])
+    _csv(tmp_path / "all.csv", [("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "", "2026-01-05 00:00"),
+                                ("A-3", "Bug", "x", "In Progress", "2026-01-02 00:00", "Unresolved", "", "2026-01-02 00:00", "2026-01-03 00:00", ""),
+                                ("A-4", "Bug", "x", "Done", "2026-01-02 00:00", "Done", "", "2026-01-02 00:00", "", "2026-01-09 00:00")])
+    df = load.read_exports(tmp_path / "done.csv", tmp_path / "all.csv")
+    assert dict(zip(df.Key, df.fonte)) == {"A-1": "entrambi", "A-3": "solo all", "A-4": "solo all", "A-2": "solo done"}
+    it = metrics.prepare(df, load.events(df), CFG)
+    src = metrics.sources_check(it, CFG, True)
+    assert (src["both"], src["only_all"], src["only_done"], src["open"]) == (1, 2, 1, 1)
+    assert len(src["warnings"]) == 2          # A-4 consegnata ma assente dalle consegne; A-2 assente dall'export completo
+    st = metrics.state_at(it, load.events(df), CFG, pd.Timestamp("2026-01-04"))
+    assert st.loc["A-3", "fase"] == "wip"     # l'aperto entra nel backlog/WIP solo grazie all'export completo
+
+
+def test_senza_export_completo():
+    d = _df([("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "", "", "2026-01-05 00:00")])
+    d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT; d["fonte"] = "solo done"
+    src = metrics.sources_check(metrics.prepare(d, load.events(d), CFG), CFG, False)
+    assert not src["has_all"] and src["warnings"] == []
+
+
+def test_kpi_entro_14_giorni_ultimi_3_mesi_contro_precedenti():
+    # consegne giornaliere dal 01/01 al 30/06 (fine dati): taglio a 3 mesi = 30/03; prima lead 20 gg (0% entro 14), dopo 5 gg
+    it, end = _many(181, lambda i: 5 if i >= 89 else 20)
+    cfg = {**CFG, "kpi_classes": ["Bug"]}
+    k = {r["class"]: r for r in metrics.within_kpi(it, cfg, end)}
+    b = k["Bug"]
+    assert b["pct_last"] == 1.0 and b["pct_prev"] == 0.0 and b["delta_pp"] == 100 and b["trend"] == "meglio"
+    assert b["n_last"] + b["n_prev"] == k["TUTTI"]["n_last"] + k["TUTTI"]["n_prev"]
+    assert b["cum"][-1] == b["n_last"] / (b["n_last"] + b["n_prev"])      # cumulato sull'intero confronto
+
+
+def test_kpi_deployments_e_progressivo():
+    it, end = _many(181, lambda i: 3)
+    k = metrics.deploy_kpi(it, CFG, end)
+    assert k["now"] == k["last"][-1] and k["before"] == k["prev"][-1]
+    assert k["last"] == sorted(k["last"]) and k["trend"] == "stabile"   # progressivo non decrescente, ritmo costante
+
+
+def test_kpi_backlog_consegne():
+    it, end = _many(181, lambda i: 3)
+    k = metrics.backlog_kpi(it, metrics_events(it), CFG, end)
+    assert k["delivered"]["series"][-1] == k["delivered"]["now"] + k["delivered"]["before"]
+    assert k["backlog"]["now"] == 0 and k["wip"]["now"] == 0          # tutto consegnato
+
+
+def metrics_events(it):
+    rows = [(k, "In Progress", c) for k, c in zip(it.Key, it.Created)] + [(k, "Done", p) for k, p in zip(it.Key, it.prod_date)]
+    return pd.DataFrame(rows, columns=["Key", "status", "ts"]).sort_values(["Key", "ts"]).reset_index(drop=True)
+
+
+def test_issue_degli_ultimi_3_mesi():
+    # fine dati 30/06: taglio al 30/03. Aperta (anche se vecchia) = si'; chiusa dopo il taglio = si'; chiusa prima = no
+    rows = [("A-1", "Bug", "x", "To Do", "2025-10-01 00:00", "Unresolved", "", "2025-10-01 00:00", "", ""),
+            ("A-2", "Bug", "x", "Done", "2026-04-01 00:00", "Done", "", "2026-04-01 00:00", "", "2026-05-01 00:00"),
+            ("A-3", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "", "2026-02-01 00:00"),
+            ("A-4", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "", "2026-06-30 00:00")]
+    d = _df(rows); d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT
+    ev = load.events(d); it = metrics.prepare(d, ev, CFG)
+    m = metrics.recent_mask(it, ev, CFG, pd.Timestamp("2026-06-30"))
+    assert dict(zip(it.Key, m)) == {"A-1": True, "A-2": True, "A-3": False, "A-4": True}
+
+
+def test_kpi_soglie_7_14_30_60():
+    it, end = _many(181, lambda i: 3 + i % 50)          # lead da 3 a 52 giorni
+    cfg = {**CFG, "kpi_classes": ["Bug"]}
+    pct = [metrics.within_kpi(it, cfg, end, "lead_days", n)[0]["pct_last"] for n in (7, 14, 30, 60)]
+    assert pct == sorted(pct) and pct[0] < pct[-1] == 1.0      # soglia piu' alta -> quota mai piu' bassa
