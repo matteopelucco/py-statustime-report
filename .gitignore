@@ -222,3 +222,6 @@ __marimo__/
 # Dati sorgente (export Jira) e output del report: mai versionare
 /data/
 /out/
+
+ # MacOS
+ .DS_Store
