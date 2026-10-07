@@ -1,0 +1,41 @@
+# Configurazione del motore. Tutte le regole di business stanno QUI, non nel codice.
+input: sample-data.csv         # export Status Time Free (unica fonte)
+output_dir: out
+
+# Chiusura = ingresso in questo stato (DONE = in produzione, per convenzione del team)
+done_status: Done
+# Se un item ha piu' ingressi in Done: "last" (ultimo) oppure "first" (primo)
+done_pick: last
+# Giorni con piu' di N ingressi in Done = migrazione/bonifica (solo 2026-01-26 ne ha 1112; i rilasci grossi hanno 60-115 item)
+bulk_done_threshold: 300
+
+# Filtri
+exclude_issue_types: [Epic, Sub-task, Bug Sub-Task]
+include_resolutions: [Done, Fixed, Resolved, Answered]   # le altre (Won't Do, Duplicate...) sono scartate
+
+# Stati "coda" (non lavorati) -> backlog; "attesa rilascio"; il resto e' WIP
+queue_statuses: [To Do, Open, Proposed, Proposal Approved, Selected for Development]
+closed_statuses: [Done, Closed, Archived, DISCARDED]
+
+# Classi di lavoro: la prima regola che combacia vince. Campi: issue_types, summary_regex
+classes:
+  - name: Bug
+    issue_types: [Bug]
+  - name: Story
+    issue_types: [Story]
+  - name: Task
+    issue_types: [Task]
+  - name: Engine
+    issue_types: [Engine]
+  - name: Speciali
+    issue_types: [Analysis, System Engineer Task]
+  # esempio per Expedite, quando ci sara' una regola (prima delle altre!):
+  # - name: Expedite
+  #   summary_regex: "(?i)expedite|urgente"
+
+# Finestre di analisi (mesi indietro da oggi) e soglie "entro N giorni"
+windows_months: [3, 6, 12, 24]
+percentiles: [50, 85, 95]
+within_days: [7, 14, 30, 60]
+min_samples: 8        # sotto questa soglia la stima e' marcata "poco affidabile"
+trend_months: 12
