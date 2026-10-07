@@ -223,5 +223,5 @@ __marimo__/
 /data/
 /out/
 
- # MacOS
- .DS_Store
+# macOS
+.DS_Store
