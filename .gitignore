@@ -225,3 +225,6 @@ __marimo__/
 
 # macOS
 .DS_Store
+
+# Configurazione locale (dati e regole specifiche): copia di config.yaml, mai versionata
+/config.local.yaml

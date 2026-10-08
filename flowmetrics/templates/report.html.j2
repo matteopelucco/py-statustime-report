@@ -209,7 +209,7 @@
         <div class="card-body"><ul class="mb-0 msg">{% for m in summ.biz %}<li>{{ m }}</li>{% endfor %}</ul></div></div>
     </div>
     <div class="col-lg-6">
-      <div class="card h-100"><div class="card-header"><h3 class="card-title">Per il team di sviluppo</h3></div>
+      <div class="card h-100"><div class="card-header"><h3 class="card-title">Per chi sviluppa</h3></div>
         <div class="card-body"><ul class="mb-0 msg">{% for m in summ.dev %}<li>{{ m }}</li>{% endfor %}</ul></div></div>
     </div>
   </div>
@@ -420,7 +420,7 @@
   {% if missing %}
   <div class="alert alert-info mt-3" role="alert"><div>
     L'export non contiene {{ missing|length }} {{ "campo" if missing|length == 1 else "campi" }} usat{{ "o" if missing|length == 1 else "i" }} dalle regole di classificazione: <b>{{ missing|join(", ") }}</b>.
-    Le classi che ne dipendono (Expedite, Story progettuali) risultano vuote o non distinte.
+    Le classi che ne dipendono (Expedite, Story con Epic) risultano vuote o non distinte.
   </div></div>
   {% endif %}
 
@@ -563,7 +563,7 @@
       Nel report un'attivit&agrave; si chiama anche <i>issue</i> o <i>item</i>.
     {% endcall %}
     {% call faq("Quando un'attività è \"consegnata\"?") %}
-      Quando entra nello stato <b>{{ cfg.done_status }}</b>, che per il team significa &laquo;in produzione&raquo;.
+      Quando entra nello stato <b>{{ cfg.done_status }}</b>, che per convenzione significa &laquo;in produzione&raquo;.
       Se ci entra pi&ugrave; volte, conta {{ "l'ultima" if cfg.done_pick == "last" else "la prima" }}.
     {% endcall %}
     {% call faq("Quali attività non vengono conteggiate?") %}
@@ -574,7 +574,7 @@
       </ul>
     {% endcall %}
     {% call faq("Cosa sono le \"classi\"?") %}
-      Gruppi di attivit&agrave; simili: Bug, Story, Task, Engine, <b>Expedite</b> (le urgenze, con l'etichetta &laquo;Expedite&raquo;) e Altro.
+      Gruppi di attivit&agrave; simili: Bug, Story, Task, <b>Expedite</b> (le urgenze, con l'etichetta &laquo;Expedite&raquo;) e Altro.
       Si confrontano sempre attivit&agrave; della stessa classe: un bug con i bug, non con un progetto di mesi.
     {% endcall %}
     {% call faq("I giorni sono lavorativi?") %}
@@ -588,7 +588,7 @@
     {% endcall %}
     {% call faq("E il cycle time?") %}
       Il tempo da quando qualcuno <b>inizia a lavorarci</b> (primo ingresso in &laquo;{{ cfg.cycle_start_status }}&raquo;) a quando arriva in produzione.
-      Non conta la coda iniziale: misura quanto &egrave; veloce il team una volta partito. Le attivit&agrave; mai passate da &laquo;{{ cfg.cycle_start_status }}&raquo; non hanno cycle time.
+      Non conta la coda iniziale: misura quanto &egrave; veloce il lavoro una volta partito. Le attivit&agrave; mai passate da &laquo;{{ cfg.cycle_start_status }}&raquo; non hanno cycle time.
     {% endcall %}
     {% call faq("In quali fasi si divide il tempo di un'attività?") %}
       <ul class="mb-0">
@@ -694,7 +694,7 @@
   <div class="card faq-group mt-3"><div class="card-header"><h3 class="card-title">Limiti</h3></div><div class="card-body">
     {% call faq("Cosa questi numeri non possono dire?") %}
       <ul class="mb-0">
-        <li>Il passato non garantisce il futuro: se cambiano team, priorit&agrave; o processo, le previsioni vanno ricalcolate.</li>
+        <li>Il passato non garantisce il futuro: se cambiano le persone coinvolte, le priorit&agrave; o processo, le previsioni vanno ricalcolate.</li>
         <li>I numeri sono buoni quanto Jira: stati aggiornati in ritardo falsano i tempi.</li>
         <li>Non misurano la dimensione o il valore delle attivit&agrave;, solo i tempi e le quantit&agrave;.</li>
       </ul>

@@ -1,16 +1,16 @@
-# flowmetrics — report di flusso da export Status Time Free (Jira PS)
+# flowmetrics — report di flusso da export Status Time Free (Jira)
 
 Fonti: due export CSV Status Time Free, stesso formato. `input_completed` = issue entrate in Done nel periodo;
 `input_all` (facoltativo) = tutte le issue del periodo, aperte comprese. Unione per Key in `load.read_exports`
 (in entrambi vale la riga di `input_all`; colonna `fonte`); `metrics.sources_check` segnala incongruenze fra i due.
 Esempi in root: `sample-data-done.csv`, `sample-data-all.csv`.
 Query Jira: `input_all` deve essere un SOVRAINSIEME di `input_completed` (stessa fine periodo, = `period_end`), altrimenti `sources_check` avvisa e il backlog storico e' sottostimato:
-`project = PS AND created < "<fine+1>" AND (resolution = EMPTY OR resolved >= "<inizio>" OR status CHANGED TO "Done" DURING ("<inizio>","<fine+1>"))`.
+`project = PROJ AND created < "<fine+1>" AND (resolution = EMPTY OR resolved >= "<inizio>" OR status CHANGED TO "Done" DURING ("<inizio>","<fine+1>"))`.
 Non usare "status CHANGED TO In Progress DURING": perde le issue gia' avviate prima del periodo e chiuse dentro (e il backlog mai toccato).
 
     pip install -r requirements.txt
     python -m flowmetrics --config config.yaml            # scrive out/report.html + CSV
-    python -m flowmetrics --input-completed data/done.csv --input-all data/all.csv --today 2026-10-07
+    python -m flowmetrics --input-completed data/done.csv --input-all data/all.csv --today 2026-07-07
     pytest
 
 Funziona uguale su Mac e Windows (Python 3.10+).
@@ -50,18 +50,18 @@ Regola KPI: salvo requisito diverso (es. Sintesi = ultimi 30/60 gg vs storico), 
 mesi e, se serve un confronto, lo fa con i `kpi_prev_months` (4) precedenti (`kpi_bounds`): periodi di durata diversa, quindi i conteggi
 (consegne, deployments) si confrontano come ritmo a settimana (`_rate_delta`). Badge dei tab compresi. Issue "degli ultimi
 2 mesi" = aperte a fine dati o chiuse dopo il taglio (`recent_mask`).
-Done = produzione; ultimo ingresso in Done; giorni con >300 ingressi Done = migrazione (2026-01-26) ignorati;
+Done = produzione; ultimo ingresso in Done; giorni con >300 ingressi Done = migrazione di massa, ignorati (`bulk_done_threshold`);
 tipi Epic/Sub-task esclusi; Resolution valide: Done/Fixed/Resolved/Answered
 (Unresolved/Open valgono solo se lo Status e' Done: Resolution mai impostata).
 L'export `input_completed` contiene solo gli item entrati in Done nel periodo di estrazione: `period_start`/`period_end` in config
 escludono le consegne fuori periodo ("fuori periodo" in items.csv) e limitano finestre (3/6 mesi) e trend ai mesi del periodo.
 
 Export al minuto: transizioni nello stesso minuto non hanno ordine certo (colonne alfabetiche): `load.events` mette per ultimo lo Status attuale.
-Tipi non previsti (es. Test Activity) finiscono in "Altro": `sources_check` li segnala, vanno in `exclude_issue_types` o in `classes`.
+Tipi non previsti (es. un tipo custom) finiscono in "Altro": `sources_check` li segnala, vanno in `exclude_issue_types` o in `classes`.
 
 ## Limiti noti / backlog evolutivo
-- Dicembre 2025 non e' un dato reale: dipende dal filtro dell'export (vedi sopra). Dati prima di `period_start` ignorati.
+- Il primo mese dell'export puo' essere parziale se la query lo taglia (vedi sopra). Dati prima di `period_start` ignorati.
 - Senza `input_all` gli item aperti mancano: backlog "oggi" non misurabile. Il formato reale dell'export completo
   e' ancora ipotetico (`sample-data-all.csv`): verificarlo quando arriva il primo export vero.
-- Expedite = label Jira: regola `labels` gia' in config, ma serve la colonna `Labels` nell'export (oggi assente: riga vuota nel report). Mancano anche Epic Link/Parent per distinguere le Story progettuali.
+- Expedite = label Jira: regola `labels` gia' in config, ma serve la colonna `Labels` nell'export (oggi assente: riga vuota nel report). Mancano anche Epic Link/Parent per distinguere le Story con Epic.
 - Previsione per percentili storici; possibile Monte Carlo / "quando finisce un set di N item".

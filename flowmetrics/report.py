@@ -8,7 +8,7 @@ from markupsafe import Markup
 from . import metrics
 
 HERE = Path(__file__).parent
-COL = {"Bug": "#d1495b", "Story (non progettuale)": "#2e86ab", "Story progettuale": "#7fb6d3", "Story": "#2e86ab", "Task": "#66a182", "Engine": "#edae49", "Altro": "#8d6a9f", "Expedite": "#f76707", "TUTTI": "#6b7280"}
+COL = {"Bug": "#d1495b", "Story (senza Epic)": "#2e86ab", "Story (con Epic)": "#7fb6d3", "Story": "#2e86ab", "Task": "#66a182", "Altro": "#8d6a9f", "Expedite": "#f76707", "TUTTI": "#6b7280"}
 OTHER = "#9ca3af"
 ENV = Environment(loader=FileSystemLoader(HERE / "templates"), autoescape=select_autoescape(["html", "j2"]))
 

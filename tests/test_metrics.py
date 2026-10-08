@@ -98,13 +98,13 @@ def test_expedite_da_label():
     assert list(metrics.classify(d.drop(columns="Labels"), CFG)) == ["Bug", "Bug"]    # senza colonna Labels non si distingue
 
 
-def test_story_progettuale_da_epic_link():
+def test_story_con_epic_da_epic_link():
     d = _df([("A-1", "Story", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05"),
              ("A-2", "Story", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05"),
              ("A-3", "Story", "x", "Done", "2026-01-01", "Done", "", "", "", "2026-01-05")])
-    d["Epic Link"] = ["PS-1", "", "PS-1"]
+    d["Epic Link"] = ["PROJ-1", "", "PROJ-1"]
     d["Labels"] = ["", "", "expedite"]
-    assert list(metrics.classify(d, CFG)) == ["Story progettuale", "Story (non progettuale)", "Expedite"]
+    assert list(metrics.classify(d, CFG)) == ["Story (con Epic)", "Story (senza Epic)", "Expedite"]
 
 
 def _df2(rows, statuses):
@@ -115,7 +115,7 @@ def _df2(rows, statuses):
 
 
 def test_fasi_attesa_lavoro_rilascio():
-    st = ["To Do", "In Progress", "Ready for PROD", "Done"]
+    st = ["To Do", "In Progress", "Ready for Release", "Done"]
     d = _df2([("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "2026-01-03 00:00", "2026-01-08 00:00", "2026-01-10 00:00"),
               ("A-2", "Bug", "x", "In Progress", "2026-01-01 00:00", "Unresolved", "", "2026-01-01 00:00", "2026-01-04 00:00", "", "")], st)
     ev = load.events(d)
@@ -169,10 +169,10 @@ def test_confronto_periodi_e_verdetto():
 
 def test_url_di_dettaglio_issue():
     from flowmetrics.report import issue_url
-    assert issue_url({"issue_url": "https://jira.example.com/browse/${issueKey}"}, "PS-12") == "https://jira.example.com/browse/PS-12"
+    assert issue_url({"issue_url": "https://jira.example.com/browse/${issueKey}"}, "PROJ-12") == "https://jira.example.com/browse/PROJ-12"
     assert issue_url({"issue_url": "https://x/?q=${issueKey}&k=${issueKey}"}, "A B") == "https://x/?q=A%20B&k=A%20B"
-    assert issue_url({}, "PS-12") is None and issue_url({"issue_url": ""}, "PS-12") is None
-    assert issue_url({"issue_url": "javascript:alert(1)//${issueKey}"}, "PS-12") is None
+    assert issue_url({}, "PROJ-12") is None and issue_url({"issue_url": ""}, "PROJ-12") is None
+    assert issue_url({"issue_url": "javascript:alert(1)//${issueKey}"}, "PROJ-12") is None
 
 
 def test_nome_mese_leggibile():

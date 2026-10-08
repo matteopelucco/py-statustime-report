@@ -28,10 +28,10 @@ Si usano due export Status Time Free, stesso formato e stessa query, impostati i
   confrontare i due export; senza, il backlog è ricostruito solo dalle consegne ed è sottostimato.
 
 `input_all` deve contenere **almeno** tutte le issue di `input_completed` (stesso intervallo di date, uguale a `period_end` in config).
-Query consigliata (periodo 01/04–30/09, estremo finale escluso):
+Query consigliata (periodo 01/01–30/06, estremo finale escluso):
 
 ```
-project = PS AND created < "2026-10-01" AND (resolution = EMPTY OR resolved >= "2026-04-01" OR status CHANGED TO "Done" DURING ("2026-04-01", "2026-10-01"))
+project = PROJ AND created < "2026-07-01" AND (resolution = EMPTY OR resolved >= "2026-01-01" OR status CHANGED TO "Done" DURING ("2026-01-01", "2026-07-01"))
 ```
 
 ```bash
@@ -41,6 +41,9 @@ python -m flowmetrics
 # Config esplicito
 python -m flowmetrics --config config.yaml
 
+# Regole e percorsi personali: copiare config.yaml in config.local.yaml (ignorato da git) e usarlo
+python -m flowmetrics --config config.local.yaml
+
 # Altri export, sovrascrivendo quelli del config
 python -m flowmetrics --input-completed data/done.csv --input-all data/all.csv
 
@@ -48,7 +51,7 @@ python -m flowmetrics --input-completed data/done.csv --input-all data/all.csv
 python -m flowmetrics --input-completed data/done.csv --input-all ""
 
 # Data di riferimento diversa da oggi (YYYY-MM-DD)
-python -m flowmetrics --input-completed data/done.csv --today 2026-10-07
+python -m flowmetrics --input-completed data/done.csv --today 2026-07-07
 
 # Prova rapida con i dati di esempio inclusi
 python -m flowmetrics --input-completed sample-data-done.csv --input-all sample-data-all.csv
