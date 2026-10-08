@@ -220,11 +220,13 @@ def test_kpi_entro_14_giorni_ultimi_3_mesi_contro_precedenti():
     assert b["cum"][-1] == b["n_last"] / (b["n_last"] + b["n_prev"])      # cumulato sull'intero confronto
 
 
-def test_kpi_deployments_e_progressivo():
+def test_kpi_deployments_per_mese():
     it, end = _many(181, lambda i: 3)
     k = metrics.deploy_kpi(it, CFG, end)
-    assert k["now"] == k["last"][-1] and k["before"] == k["prev"][-1]
-    assert k["last"] == sorted(k["last"]) and k["trend"] == "stabile"   # progressivo non decrescente, ritmo costante
+    m = k["months"]
+    assert sum(x["n"] for x in m) <= k["now"] + k["before"]               # i bordi sotto 7 giorni non hanno barra
+    assert sum(x["n"] for x in m if x["period"] == "last") > 0 and m[0]["period"] == "prev" and m[-1]["period"] == "last"
+    assert k["trend"] == "stabile" and all(abs(x["per_week"] - 7.2) < 0.5 for x in m)   # 1 al giorno = 7 a settimana
 
 
 def test_kpi_backlog_consegne():

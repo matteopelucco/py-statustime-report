@@ -210,9 +210,13 @@ def _tab_kpis(cfg, it, ev, end):
                                        ("release", "Attesa (rilascio)"))],
              "p_hi": ap[1]}
     return {"win": win, "lead": within("lead_days", "lt"), "cycle": within("cycle_days", "ct"), "backlog": backlog,
-            "deploy": deploy, "issue": issue}, {"sparks": sparks, "deploy": {"last": dk["last"], "prev": dk["prev"],
-                                                                              "last_label": f"Ultimi {win['months']} mesi ({win['last']})",
-                                                                              "prev_label": f"{win['prev_months']} mesi precedenti ({win['prev']})"}}
+            "deploy": deploy, "issue": issue}, {"sparks": sparks, "deploy": {"months": [month_name(m["month"]) for m in dk["months"]],
+                                                                              "per_week": [round(m["per_week"], 1) for m in dk["months"]],
+                                                                              "n": [m["n"] for m in dk["months"]],
+                                                                              "last": [m["period"] == "last" for m in dk["months"]],
+                                                                              "avg_last": round(dk["per_week"], 1), "avg_prev": round(dk["per_week_before"], 1),
+                                                                              "last_label": f"Ultimi {win['months']} mesi",
+                                                                              "prev_label": f"{win['prev_months']} mesi precedenti"}}
 
 
 def render(cfg, today, end, it, ev, fc, thr, lead, snap, bnow, cyc, cyl, cmp, src, path):
