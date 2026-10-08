@@ -6,6 +6,7 @@ with open(Path(__file__).resolve().parent.parent / "config.yaml", encoding="utf-
     CFG = yaml.safe_load(_f)
 CFG["bulk_done_threshold"] = 2
 CFG.pop("period_start", None); CFG.pop("period_end", None)   # i test usano date di gennaio
+CFG["kpi_months"] = CFG["kpi_prev_months"] = 3               # i test KPI esistenti assumono 3 + 3 mesi
 
 
 def _df(rows):
@@ -255,3 +256,41 @@ def test_kpi_soglie_7_14_30_60():
     cfg = {**CFG, "kpi_classes": ["Bug"]}
     pct = [metrics.within_kpi(it, cfg, end, "lead_days", n)[0]["pct_last"] for n in (7, 14, 30, 60)]
     assert pct == sorted(pct) and pct[0] < pct[-1] == 1.0      # soglia piu' alta -> quota mai piu' bassa
+
+
+def test_transizioni_nello_stesso_minuto_finiscono_nello_stato_attuale():
+    # colonne in ordine alfabetico come nell'export reale: Done prima di In Progress. Entrambi alle 10:00, Status = Done:
+    # l'ultimo evento deve essere Done, altrimenti l'item risulta ancora in lavorazione (e accumula giorni fino a oggi)
+    d = pd.DataFrame([{"Key": "A-1", "Issue Type": "Bug", "Summary": "x", "Status": "Done", "Created": pd.Timestamp("2026-01-01"),
+                       "Resolution": "Done", "Resolved": pd.NaT, "'->Done": "2026-01-05 10:00",
+                       "'->In Progress": "2026-01-02 10:00,2026-01-05 10:00", "'->To Do": "2026-01-01 00:00"}])
+    ev = load.events(d)
+    assert ev.groupby("Key").tail(1).status.iloc[0] == "Done"
+    it = metrics.phases(metrics.prepare(d, ev, CFG), ev, CFG, pd.Timestamp("2026-03-01"))
+    assert it.loc[0, "work_days"] == 3 and abs(it.loc[0, "wait_days"] - 1.4167) < 1e-3     # niente giorni fantasma fino a "end"
+    assert metrics.state_at(it, ev, CFG, pd.Timestamp("2026-02-01")).loc["A-1", "fase"] == "chiuso"
+
+
+def test_diagnostica_export_tipi_senza_regola_e_query_non_sovrainsieme(tmp_path):
+    cfg = {**CFG, "period_start": "2026-01-01"}
+    _csv(tmp_path / "done.csv", [("A-1", "Bug", "x", "Done", "2025-11-01 00:00", "Done", "", "", "", "2026-01-05 00:00")])
+    _csv(tmp_path / "all.csv", [("A-2", "Spike", "x", "Done", "2026-01-02 00:00", "", "", "2026-01-02 00:00", "", "")])
+    df = load.read_exports(tmp_path / "done.csv", tmp_path / "all.csv")
+    src = metrics.sources_check(metrics.prepare(df, load.events(df), cfg), cfg, True)
+    w = " ".join(src["warnings"])
+    assert "nate prima di 01/01/2026" in w            # la consegna A-1 e' vecchia e manca nell'export completo
+    assert "Spike (1)" in w                   # tipo nuovo, senza regola
+
+
+def test_kpi_periodi_di_durata_diversa_2_mesi_contro_4():
+    # consegne costanti (3 al giorno) dal 01/01 al 30/06: taglio a 2 mesi = 30/04, precedente 4 mesi = dal 31/12
+    cfg = {**CFG, "kpi_months": 2, "kpi_prev_months": 4}
+    it, end = _many(181, lambda i: 3)
+    start, cut, e = metrics.kpi_bounds(cfg, end)
+    assert (e - cut).days < (cut - start).days
+    d = metrics.deploy_kpi(it, cfg, end)
+    assert d["before"] > d["now"]                       # il precedente dura il doppio: totale piu' alto...
+    assert d["trend"] == "stabile" and abs(d["delta"]) < 0.05   # ...ma il ritmo e' lo stesso
+    assert abs(d["per_week"] - d["per_week_before"]) < 1
+    b = metrics.backlog_kpi(it, metrics_events(it), cfg, end)["delivered"]
+    assert b["trend"] == "stabile" and abs(b["per_week"] - b["per_week_before"]) < 1

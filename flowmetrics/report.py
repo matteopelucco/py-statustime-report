@@ -160,7 +160,7 @@ def _tab_kpis(cfg, it, ev, end):
     start, cut, end = metrics.kpi_bounds(cfg, end)
     day = pd.Timedelta(days=1)
     win = {"last": f"{(cut + day):%d/%m}–{end:%d/%m/%Y}", "prev": f"{(start + day):%d/%m}–{cut:%d/%m/%Y}",
-           "months": cfg.get("kpi_months", 3)}
+           "months": cfg.get("kpi_months", 3), "prev_months": cfg.get("kpi_prev_months", cfg.get("kpi_months", 3))}
     days = cfg.get("kpi_within_days", [7, 14, 30, 60])
     days = [days] if isinstance(days, int) else list(days)
     default = cfg.get("kpi_default_days", 14)
@@ -188,16 +188,16 @@ def _tab_kpis(cfg, it, ev, end):
         return groups
 
     b = metrics.backlog_kpi(it, ev, cfg, end)
-    labels = {"backlog": ("In attesa (backlog)", "#9ca3af", f"{cfg.get('kpi_months', 3)} mesi prima"),
-              "wip": ("In lavorazione (WIP)", "#e5833b", f"{cfg.get('kpi_months', 3)} mesi prima"),
-              "delivered": (f"Consegnati negli ultimi {win['months']} mesi", "#66a182", f"nei {win['months']} mesi precedenti")}
+    labels = {"backlog": ("In attesa (backlog)", "#9ca3af", f"{win['months']} mesi prima"),
+              "wip": ("In lavorazione (WIP)", "#e5833b", f"{win['months']} mesi prima"),
+              "delivered": (f"Consegnati negli ultimi {win['months']} mesi", "#66a182", f"nei {win['prev_months']} mesi precedenti")}
     backlog = [{"label": labels[k][0], "value": b[k]["now"], "unit": "item", "delta": _delta(b[k]["delta"]),
-                "cls": TREND_CLS[b[k]["trend"]], "note": f"{labels[k][2]}: {b[k]['before']}",
+                "cls": TREND_CLS[b[k]["trend"]], "note": f"{labels[k][2]}: {b[k]['before']}" + (f" ({_f(b[k]['per_week_before'])}/sett. contro {_f(b[k]['per_week'])})" if k == "delivered" else ""),
                 "spark": spark(f"bk-{k}", b[k]["weeks"], b[k]["series"], labels[k][1])} for k in ("backlog", "wip", "delivered")]
 
     dk = metrics.deploy_kpi(it, cfg, end)
     deploy = {"value": dk["now"], "delta": _delta(dk["delta"]), "cls": TREND_CLS[dk["trend"]], "before": dk["before"],
-              "per_week": _f(dk["per_week"])}
+              "per_week": _f(dk["per_week"]), "per_week_before": _f(dk["per_week_before"])}
 
     recent = metrics.recent_mask(it, ev, cfg, end)
     ak = metrics.anomaly_kpi(it, cfg, recent)
@@ -212,7 +212,7 @@ def _tab_kpis(cfg, it, ev, end):
     return {"win": win, "lead": within("lead_days", "lt"), "cycle": within("cycle_days", "ct"), "backlog": backlog,
             "deploy": deploy, "issue": issue}, {"sparks": sparks, "deploy": {"last": dk["last"], "prev": dk["prev"],
                                                                               "last_label": f"Ultimi {win['months']} mesi ({win['last']})",
-                                                                              "prev_label": f"{win['months']} mesi precedenti ({win['prev']})"}}
+                                                                              "prev_label": f"{win['prev_months']} mesi precedenti ({win['prev']})"}}
 
 
 def render(cfg, today, end, it, ev, fc, thr, lead, snap, bnow, cyc, cyl, cmp, src, path):

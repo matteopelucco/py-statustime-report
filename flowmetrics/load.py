@@ -39,7 +39,10 @@ def status_names(df):
 
 
 def events(df):
-    """Tabella lunga: Key, status, ts (ogni ingresso in uno stato)."""
+    """Tabella lunga: Key, status, ts (ogni ingresso in uno stato). L'export ha granularita' al minuto: se piu'
+    transizioni cadono nello stesso minuto l'ordine reale e' perso (le colonne sono in ordine alfabetico) e l'ultima
+    potrebbe non essere lo stato attuale. In quel caso lo Status corrente dell'item va per ultimo: e' l'unico ordine
+    compatibile con i dati (senza, un item gia' in Done risulta ancora in lavorazione)."""
     rows = []
     for st in status_names(df):
         col = df["'->" + st]
@@ -52,7 +55,8 @@ def events(df):
                     rows.append((key, st, t))
     ev = pd.DataFrame(rows, columns=["Key", "status", "ts"])
     ev["ts"] = pd.to_datetime(ev["ts"], format=STAMP)
-    return ev.sort_values(["Key", "ts"]).reset_index(drop=True)
+    ev["_cur"] = ev.status == ev.Key.map(df.drop_duplicates("Key").set_index("Key").Status)
+    return ev.sort_values(["Key", "ts", "_cur"], kind="stable").drop(columns="_cur").reset_index(drop=True)
 
 
 def status_days(df):

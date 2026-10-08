@@ -311,6 +311,7 @@ def sources_check(it, cfg, has_all):
     open_ = ~excl & ~it.Status.isin(cfg["closed_statuses"])
     out = {"has_all": has_all, "both": int(n.get("entrambi", 0)), "only_done": int(n.get("solo done", 0)),
            "only_all": int(n.get("solo all", 0)), "open": int(open_.sum()), "warnings": []}
+    p_start = period_bounds(cfg)[0]
     if has_all:
         ex = lambda s: ", ".join(s.Key.head(3)) + ("..." if len(s) > 3 else "")
         miss = it[(it.fonte == "solo all") & it.valid]
@@ -319,19 +320,30 @@ def sources_check(it, cfg, has_all):
                                    "l'export delle consegne potrebbe essere incompleto o estratto in un'altra data.")
         extra = it[it.fonte == "solo done"]
         if len(extra):
+            old = int((extra.Created < p_start).sum()) if p_start is not None else 0
+            hint = (f" {old} sono nate prima di {p_start:%d/%m/%Y}: la query dell'export completo deve includere anche le issue "
+                    "gia' avviate prima del periodo e chiuse al suo interno (non solo quelle passate da In Progress nel periodo), "
+                    "altrimenti il backlog storico e' sottostimato.") if old else ""
             out["warnings"].append(f"{len(extra)} issue dell'export delle consegne mancano nell'export completo ({ex(extra)}): "
-                                   "i due export non coprono lo stesso perimetro.")
+                                   f"i due export non coprono lo stesso perimetro.{hint}")
+    # tipi senza regola di classe ne' esclusione: finiscono in "Altro" e contano come lavoro vero (es. record di test)
+    ruled = {t for r in cfg["classes"] for t in r.get("issue_types", [])} | set(cfg["exclude_issue_types"])
+    unk = it[~it["Issue Type"].isin(ruled)]["Issue Type"].value_counts()
+    if len(unk):
+        out["warnings"].append("tipi di issue senza regola in `classes` ne' in `exclude_issue_types` (finiscono in 'Altro'): "
+                               + ", ".join(f"{t} ({n})" for t, n in unk.items()) + ".")
     return out
 
 
-# --- KPI dei tab: ultimi kpi_months mesi contro i kpi_months precedenti ---
+# --- KPI dei tab: ultimi kpi_months mesi contro i kpi_prev_months precedenti ---
 
 def kpi_bounds(cfg, end):
-    """(inizio precedente, taglio, fine): ultimi kpi_months mesi = (taglio, fine], precedenti = (inizio, taglio].
-    L'inizio non va prima di period_start (fuori periodo l'export non ha dati)."""
+    """(inizio precedente, taglio, fine): ultimi kpi_months mesi = (taglio, fine], precedenti = (inizio, taglio]
+    di kpi_prev_months mesi (default = kpi_months). I due periodi possono durare diverso: i conteggi si confrontano
+    come ritmi (_rate_delta). L'inizio non va prima di period_start (fuori periodo l'export non ha dati)."""
     m = cfg.get("kpi_months", 3)
     cut = end - pd.DateOffset(months=m)
-    start = cut - pd.DateOffset(months=m)
+    start = cut - pd.DateOffset(months=cfg.get("kpi_prev_months", m))
     p_start = period_bounds(cfg)[0]
     if p_start is not None:
         start = max(start, p_start - pd.Timedelta(minutes=1))
@@ -353,6 +365,12 @@ def _trend(delta, better, tol):
 
 def _rel(a, b):
     return (a - b) / b if b else np.nan
+
+
+def _rate_delta(n_last, n_prev, bounds):
+    """Variazione relativa del ritmo (item al giorno) fra ultimo periodo e precedente: durano diverso, i totali non sono confrontabili."""
+    start, cut, end = bounds
+    return _rel(n_last / max((end - cut).days, 1), n_prev / max((cut - start).days, 1))
 
 
 def within_kpi(it, cfg, end, col="lead_days", n_days=14):
@@ -379,7 +397,7 @@ def within_kpi(it, cfg, end, col="lead_days", n_days=14):
 
 def backlog_kpi(it, ev, cfg, end):
     """Item in attesa (backlog) e in lavorazione (WIP) a fine dati contro kpi_months mesi prima, consegne degli
-    ultimi kpi_months mesi contro i precedenti; serie settimanali (stato per backlog/WIP, cumulato per le consegne)."""
+    ultimi kpi_months mesi contro i precedenti (confronto fra ritmi); serie settimanali (stato per backlog/WIP, cumulato per le consegne)."""
     start, cut, end = kpi_bounds(cfg, end)
     tol = cfg.get("trend_tolerance", 0.10)
     weeks = _weeks(start, end)
@@ -391,7 +409,9 @@ def backlog_kpi(it, ev, cfg, end):
                   "weeks": weeks, "series": [int(cnt[w].get(f, 0)) for w in weeks]}
     d = it[it.valid & it.prod_date.notna()].prod_date
     last, prev = int(((d > cut) & (d <= end)).sum()), int(((d > start) & (d <= cut)).sum())
-    out["delivered"] = {"now": last, "before": prev, "delta": _rel(last, prev), "trend": _trend(_rel(last, prev), "high", tol),
+    delta = _rate_delta(last, prev, (start, cut, end))
+    out["delivered"] = {"now": last, "before": prev, "delta": delta, "trend": _trend(delta, "high", tol),
+                        "per_week": last / max((end - cut).days, 1) * 7, "per_week_before": prev / max((cut - start).days, 1) * 7,
                         "weeks": weeks, "series": [int(((d > start) & (d <= w)).sum()) for w in weeks]}
     return out
 
@@ -408,8 +428,9 @@ def deploy_kpi(it, cfg, end):
         return [int(((d > a) & (d <= min(a + pd.Timedelta(days=i), b))).sum()) for i in range(1, days + 1)]
     last, prev = progressive(cut, end), progressive(start, cut)
     n_last, n_prev = (last[-1] if last else 0), (prev[-1] if prev else 0)
-    return {"now": n_last, "before": n_prev, "delta": _rel(n_last, n_prev), "trend": _trend(_rel(n_last, n_prev), "high", tol),
-            "per_week": n_last / max((end - cut).days, 1) * 7, "last": last, "prev": prev,
+    delta = _rate_delta(n_last, n_prev, (start, cut, end))
+    return {"now": n_last, "before": n_prev, "delta": delta, "trend": _trend(delta, "high", tol),
+            "per_week": n_last / max((end - cut).days, 1) * 7, "per_week_before": n_prev / max((cut - start).days, 1) * 7, "last": last, "prev": prev,
             "bounds": (start, cut, end)}
 
 

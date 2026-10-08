@@ -249,7 +249,7 @@
       <div class="subheader text-truncate" title="{{ k.label }}">{% if k.color %}<span class="dot" style="background:{{ k.color }}"></span>{% endif %}{{ k.label }}</div>
       <div class="d-flex align-items-baseline flex-wrap gap-2">
         <div class="h1 mb-0">{{ k.value }}<span class="unit">{{ k.unit }}</span></div>
-        <span class="badge {{ k.cls }}" title="rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }})">{{ k.delta }}</span>
+        <span class="badge {{ k.cls }}" title="rispetto ai {{ tk.win.prev_months }} mesi precedenti ({{ tk.win.prev }})">{{ k.delta }}</span>
       </div>
       <div class="text-secondary small">{{ k.note }}{% if k.low %} &middot; <span class="text-warning">poco affidabile</span>{% endif %}</div>
     </div>
@@ -276,7 +276,7 @@
   {% endmacro %}
 
   {% macro period_line() %}
-  <div class="period-line small text-secondary">Ultimi <b>{{ tk.win.months }} mesi</b> ({{ tk.win.last }}) rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }})</div>
+  <div class="period-line small text-secondary">Ultimi <b>{{ tk.win.months }} mesi</b> ({{ tk.win.last }}) rispetto ai {{ tk.win.prev_months }} mesi precedenti ({{ tk.win.prev }})</div>
   {% endmacro %}
 
   {% macro info_title() %}<h3 class="subsection-title info-title">{{ icon("info") }} Info</h3>{% endmacro %}
@@ -449,7 +449,7 @@
     <p><b>Cycle time</b>: per un item urgente, <b>uno solo alla volta</b>, che salta la coda: tempo dal primo ingresso in <b>{{ cfg.cycle_start_status }}</b> all'ingresso in Done,
       in giorni di calendario. Sono considerati solo gli item passati da {{ cfg.cycle_start_status }}.</p>
     <p class="mb-0"><b>KPI</b>: quota di item consegnati negli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) arrivati in produzione entro N giorni (scegli N con i tab {{ tk.lead|map(attribute="days")|join(" / ") }} gg sopra le card),
-      e variazione in <b>punti percentuali</b> rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }}): verde = meglio, rosso = peggio, grigio = entro &plusmn;{{ cfg.kpi_tolerance_pp }} pp.
+      e variazione in <b>punti percentuali</b> rispetto ai {{ tk.win.prev_months }} mesi precedenti ({{ tk.win.prev }}): verde = meglio, rosso = peggio, grigio = entro &plusmn;{{ cfg.kpi_tolerance_pp }} pp.
       Il mini-grafico &egrave; l'<b>andamento cumulato</b>: a ogni settimana, la quota calcolata su tutte le consegne dall'inizio del confronto.
       Con meno di {{ cfg.min_samples }} item nel periodo la card &egrave; segnata come poco affidabile.</p>
   </div></div>
@@ -492,7 +492,7 @@
     <p>{% if src.has_all %}Backlog calcolato sull'export completo: {{ src.both + src.only_all }} issue, di cui {{ src.open }} aperte alla fine dei dati.
       {% else %}Senza l'export completo il backlog considera solo le issue consegnate ed &egrave; sottostimato.{% endif %}</p>
     <p class="mb-0"><b>KPI</b>: &laquo;In attesa&raquo; e &laquo;In lavorazione&raquo; sono gli item alla fine dei dati ({{ end }}) confrontati con {{ tk.win.months }} mesi prima
-      (meno &egrave; meglio); &laquo;Consegnati&raquo; sono le consegne degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) contro i {{ tk.win.months }} precedenti ({{ tk.win.prev }}).
+      (meno &egrave; meglio); &laquo;Consegnati&raquo; sono le consegne degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) contro i {{ tk.win.prev_months }} precedenti ({{ tk.win.prev }}); i periodi durano diverso, quindi la variazione confronta le consegne a settimana.
       Mini-grafici: andamento settimanale dall'inizio del confronto; per le consegne &egrave; il totale progressivo.</p>
   </div></div>
   </section>
@@ -507,12 +507,13 @@
         <div class="subheader">Consegnati in produzione &middot; ultimi {{ tk.win.months }} mesi</div>
         <div class="d-flex align-items-baseline flex-wrap gap-2">
           <div class="h1 mb-0 kpi-big">{{ dk.value }}<span class="unit">item</span></div>
-          <span class="badge {{ dk.cls }}" title="rispetto ai {{ tk.win.months }} mesi precedenti ({{ tk.win.prev }})">{{ dk.delta }}</span>
+          <span class="badge {{ dk.cls }}" title="rispetto ai {{ tk.win.prev_months }} mesi precedenti ({{ tk.win.prev }}), a confronto il ritmo a settimana">{{ dk.delta }}</span>
         </div>
         <div class="text-secondary small mt-1">{{ tk.win.last }}</div>
         <div class="hr my-3"></div>
-        <div class="d-flex justify-content-between small"><span class="text-secondary">{{ tk.win.months }} mesi precedenti</span><b>{{ dk.before }}</b></div>
+        <div class="d-flex justify-content-between small"><span class="text-secondary">{{ tk.win.prev_months }} mesi precedenti</span><b>{{ dk.before }}</b></div>
         <div class="d-flex justify-content-between small mt-1"><span class="text-secondary">Media a settimana (ultimi {{ tk.win.months }} mesi)</span><b>{{ dk.per_week }}</b></div>
+        <div class="d-flex justify-content-between small mt-1"><span class="text-secondary">Media a settimana ({{ tk.win.prev_months }} mesi precedenti)</span><b>{{ dk.per_week_before }}</b></div>
       </div></div>
     </div>
     <div class="col-lg-8">
@@ -538,9 +539,9 @@
   <div class="card"><div class="card-body info-body">
     <p>Item entrati in <b>{{ cfg.done_status }}</b> (= produzione) in ciascun mese, divisi per classe; la linea tratteggiata &egrave; il totale del mese, per leggere l'andamento.
       Si contano solo gli item validi (stessi filtri del lead time: tipi e Resolution esclusi, giorni di bonifica ignorati); l'ultimo mese pu&ograve; essere parziale (dati fino al {{ end }}).</p>
-    <p class="mb-0"><b>KPI</b>: consegne degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) contro i {{ tk.win.months }} precedenti ({{ tk.win.prev }}).
+    <p class="mb-0"><b>KPI</b>: consegne degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) contro i {{ tk.win.prev_months }} precedenti ({{ tk.win.prev }}); i periodi durano diverso, quindi la variazione confronta le consegne a settimana.
       L'<b>andamento progressivo</b> sovrappone i due periodi giorno per giorno (giorno 1 = inizio del periodo): se la linea piena sta sopra quella tratteggiata,
-      a parit&agrave; di giorni si &egrave; consegnato di pi&ugrave;.</p>
+      a parit&agrave; di giorni si &egrave; consegnato di pi&ugrave; (il periodo precedente &egrave; pi&ugrave; lungo, la sua linea prosegue oltre).</p>
   </div></div>
   </section>
 
@@ -636,7 +637,7 @@
       La percentuale di attivit&agrave; consegnate entro quel numero di giorni. I tab sopra le card permettono di cambiare soglia.
     {% endcall %}
     {% call faq("Su quale periodo sono calcolati i KPI?") %}
-      Sugli <b>ultimi {{ cfg.kpi_months }} mesi</b>, confrontati con i {{ cfg.kpi_months }} mesi precedenti.
+      Sugli <b>ultimi {{ cfg.kpi_months }} mesi</b>, confrontati con i {{ cfg.kpi_prev_months|default(cfg.kpi_months) }} mesi precedenti (il confronto copre cos&igrave; {{ cfg.kpi_months + cfg.kpi_prev_months|default(cfg.kpi_months) }} mesi). Il periodo precedente &egrave; pi&ugrave; lungo: per questo le consegne si confrontano a settimana e non in totale.
       Fa eccezione la Sintesi, che confronta gli ultimi {{ cfg.recent_days|join(" e ") }} giorni con tutto il periodo precedente.
     {% endcall %}
     {% call faq("Quanto ci si può fidare?") %}

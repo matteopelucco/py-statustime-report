@@ -1,10 +1,15 @@
 # Configurazione del motore. Tutte le regole di business stanno QUI, non nel codice.
 project_name: PS          # nome del progetto nel titolo del report (vuoto = solo "Flow report")
 powered_by: "Public Site & Digital Acquisition Team"   # firma nel piè di pagina (vuoto = nessuna)
-# Export Status Time Free (stesso formato, stessa query). Sovrascrivibili con --input / --input-all.
-input: data/stf_20260401_20261001_done.csv       # issue entrate in Done nel periodo: lead time, cycle time, deployments
-input_all: data/stf_20260401_20261001_all.csv    # TUTTE le issue del periodo, aperte comprese: backlog corretto e confronto
-                                                 # fra i due export. Facoltativo: vuoto = backlog solo dalle consegne (sottostimato)
+
+
+# --- Export Status Time Free (stesso formato, stessa query). Sovrascrivibili con --input-completed / --input-all.
+# issue entrate in Done nel periodo: lead time, cycle time, deployments
+input_completed: data/2026-10-08 09-21-PS - Metrics - Completed Issues (in a given period).csv
+# TUTTE le issue del periodo, aperte comprese: backlog corretto e confronto fra i due export. Facoltativo: vuoto = backlog solo dalle consegne (sottostimato)
+input_all: data/2026-10-08 09-22-PS - Metrics - All issues (in a given period).csv
+# -----------------------------------------------------------------------------------------------------
+
 output_dir: out
 # Link di dettaglio della issue nel report: ${issueKey} viene sostituito con la key (es. PS-123). Vuoto = nessun link.
 issue_url: "https://jira.example.com/browse/${issueKey}"
@@ -19,10 +24,13 @@ bulk_done_threshold: 300
 # Periodo di estrazione dell'export (item entrati in Done in questo intervallo). Le consegne fuori periodo sono
 # escluse (es. item rientrati in Done solo per la bonifica) e nessun mese precedente appare nel trend.
 period_start: 2026-04-01
-# period_end: 2026-09-30    # facoltativo; di default = oggi
+# DEVE coincidere con la fine delle query Jira: l'export completo contiene anche le consegne successive (es. ottobre),
+# quello delle consegne no -> senza period_end il mese in corso e' conteggiato a meta'.
+period_end: 2026-09-30    # facoltativo; di default = oggi
 
 # Filtri
-exclude_issue_types: [Epic, Sub-task, Bug Sub-Task]
+# Test Activity = record dei casi di test: restano in "Passed" per sempre, non sono consegne ne' lavoro in corso
+exclude_issue_types: [Epic, Sub-task, Bug Sub-Task, Test Activity]
 include_resolutions: [Done, Fixed, Resolved, Answered]   # le altre (Won't Do, Duplicate...) sono scartate
 # Valori "di default" di Jira (Resolution mai impostata): valgono come consegnati SOLO se lo Status e' done_status
 default_resolutions: [Unresolved, Open]
@@ -71,8 +79,10 @@ recent_days: [30, 60]
 trend_tolerance: 0.10   # variazioni entro +/-10% = "stabile"
 
 # KPI in testa ai tab Issue, Lead time / Cycle time, Backlog, Deployments:
-# ultimi kpi_months mesi (fino all'ultimo dato) contro i kpi_months precedenti
-kpi_months: 3
+# ultimi kpi_months mesi (fino all'ultimo dato) contro i kpi_prev_months precedenti (6 mesi di misurazione in totale).
+# I due periodi durano diverso: conteggi (consegne, deployments) confrontati come ritmo a settimana; % e stati a fine periodo non risentono della durata.
+kpi_months: 2
+kpi_prev_months: 4
 kpi_within_days: [7, 14, 30, 60]   # KPI lead/cycle time = % di item consegnati entro N giorni (un tab per valore)
 kpi_default_days: 14               # tab aperto all'avvio
 kpi_classes: [Bug, Engine, Expedite, Story (non progettuale), Altro]   # + Tutti
