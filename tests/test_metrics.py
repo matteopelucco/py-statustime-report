@@ -1,8 +1,8 @@
 from pathlib import Path
 import pandas as pd, yaml
-from flowmetrics import load, metrics
+from flowmetrics import cli, load, metrics
 
-with open(Path(__file__).resolve().parent.parent / "config.yaml", encoding="utf-8") as _f:
+with open(Path(__file__).resolve().parent.parent / "config.example.yaml", encoding="utf-8") as _f:
     CFG = yaml.safe_load(_f)
 CFG["bulk_done_threshold"] = 2
 CFG.pop("period_start", None); CFG.pop("period_end", None)   # i test usano date di gennaio
@@ -18,6 +18,42 @@ def _prep(rows):
     d = _df(rows)
     d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT
     return metrics.prepare(d, load.events(d), CFG)
+
+
+def test_nome_file_report():
+    first, last = pd.Timestamp("2026-01-15 10:00"), pd.Timestamp("2026-02-20 18:00")
+    cfg = {"project_name": "PS", "period_start": "2026-04-01", "period_end": "2026-09-30"}
+    assert cli.report_filename(cfg, first, last) == "PS_flow_report_20260401_20260930.html"
+    # periodo non impostato: date dei dati; progetto vuoto: niente prefisso; caratteri non validi sostituiti
+    assert cli.report_filename({"project_name": ""}, first, last) == "flow_report_20260115_20260220.html"
+    assert cli.report_filename({"project_name": "A/B: C"}, first, last) == "A-B-C_flow_report_20260115_20260220.html"
+
+
+def test_exclude_keys_fuori_da_tutto_il_report():
+    rows = [("A-1", "Task", "x", "Done", "2024-01-01 00:00", "Done", "", "", "", "2024-02-01 00:00,2026-01-10 00:00"),
+            ("A-2", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "", "", "2026-01-11 00:00"),
+            ("A-3", "Bug", "x", "To Do", "2026-01-01 00:00", "", "", "2026-01-01 00:00", "", "")]
+    d = _df(rows); d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT; d["fonte"] = "entrambi"
+    ev = load.events(d)
+    cfg = {**CFG, "exclude_keys": ["A-1", "A-3", "A-99"]}
+    it = metrics.prepare(d, ev, cfg).set_index("Key", drop=False)
+    assert it.loc["A-1", "excl_reason"] == "escluso da config" and not it.loc["A-1", "valid"]   # resta per l'audit
+    assert it.loc["A-2", "valid"]
+    assert set(it[metrics.in_scope(it, cfg)].Key) == {"A-2"}
+    assert set(metrics.state_at(it, ev, cfg, pd.Timestamp("2026-02-01")).index) == {"A-2"}       # backlog/WIP
+    assert metrics.backlog_now(it, ev, cfg, pd.Timestamp("2026-02-01")).empty                    # A-3 aperta ma esclusa
+    assert any("A-99" in w for w in metrics.sources_check(it, cfg, False)["warnings"])           # refuso segnalato
+    assert metrics.prepare(d, ev, {**CFG, "exclude_keys": None}).set_index("Key").loc["A-1", "valid"]   # opzione vuota
+
+
+def test_state_at_conserva_ordine_transizioni_stesso_minuto():
+    # molte righe: su input piccoli anche l'ordinamento non stabile sembra funzionare
+    rows = [(f"A-{i}", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "", f"2026-01-{i % 28 + 1:02d} 10:00", f"2026-01-{i % 28 + 1:02d} 10:00")
+            for i in range(500)]
+    d = _df(rows); d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT
+    ev = load.events(d)
+    st = metrics.state_at(metrics.prepare(d, ev, CFG), ev, CFG, pd.Timestamp("2026-02-01"))
+    assert (st.fase == "chiuso").all()   # In Progress e Done nello stesso minuto: vale lo Status attuale
 
 
 def test_lead_time_giorni_calendario():
@@ -220,11 +256,13 @@ def test_kpi_entro_14_giorni_ultimi_3_mesi_contro_precedenti():
     assert b["cum"][-1] == b["n_last"] / (b["n_last"] + b["n_prev"])      # cumulato sull'intero confronto
 
 
-def test_kpi_deployments_e_progressivo():
+def test_kpi_deployments_per_mese():
     it, end = _many(181, lambda i: 3)
     k = metrics.deploy_kpi(it, CFG, end)
-    assert k["now"] == k["last"][-1] and k["before"] == k["prev"][-1]
-    assert k["last"] == sorted(k["last"]) and k["trend"] == "stabile"   # progressivo non decrescente, ritmo costante
+    m = k["months"]
+    assert sum(x["n"] for x in m) <= k["now"] + k["before"]               # i bordi sotto 7 giorni non hanno barra
+    assert sum(x["n"] for x in m if x["period"] == "last") > 0 and m[0]["period"] == "prev" and m[-1]["period"] == "last"
+    assert k["trend"] == "stabile" and all(abs(x["per_week"] - 7.2) < 0.5 for x in m)   # 1 al giorno = 7 a settimana
 
 
 def test_kpi_backlog_consegne():

@@ -9,7 +9,7 @@ Query Jira: `input_all` deve essere un SOVRAINSIEME di `input_completed` (stessa
 Non usare "status CHANGED TO In Progress DURING": perde le issue gia' avviate prima del periodo e chiuse dentro (e il backlog mai toccato).
 
     pip install -r requirements.txt
-    python -m flowmetrics --config config.yaml            # scrive out/report.html + CSV
+    python -m flowmetrics --config config/config.yaml     # scrive out/<project_name>_flow_report_<period_start>_<period_end>.html + CSV
     python -m flowmetrics --input-completed data/done.csv --input-all data/all.csv --today 2026-07-07
     pytest
 
@@ -39,7 +39,8 @@ Cycle time = dal primo ingresso in `cycle_start_status` (In Progress) alla produ
 Tabelle del report: righe da `report_classes` (+ Tutti = tutti gli item validi).
 
 ## Struttura
-- `config.yaml` tutte le regole di business (classi, filtri, soglie). Primo posto dove intervenire.
+- `config/` (ignorata da git; default `config/config.yaml`) tutte le regole di business (classi, filtri, soglie). Primo posto dove intervenire.
+- `config.example.yaml` modello versionato da copiare in `config/`; anche i test leggono questo. Nuove opzioni: aggiungerle qui.
 - `flowmetrics/load.py` parsing export; `metrics.py` calcoli (funzioni pure); `report.py` + `templates/report.html.j2` HTML; `cli.py`.
 - `flowmetrics/vendor/` Tabler (CSS, MIT) ed Apache ECharts (JS) incorporati nel report: nessuna dipendenza esterna, si apre offline.
 - `tests/` regole verificate su dati sintetici. Ogni nuova regola = un test.
@@ -51,7 +52,7 @@ mesi e, se serve un confronto, lo fa con i `kpi_prev_months` (4) precedenti (`kp
 (consegne, deployments) si confrontano come ritmo a settimana (`_rate_delta`). Badge dei tab compresi. Issue "degli ultimi
 2 mesi" = aperte a fine dati o chiuse dopo il taglio (`recent_mask`).
 Done = produzione; ultimo ingresso in Done; giorni con >300 ingressi Done = migrazione di massa, ignorati (`bulk_done_threshold`);
-tipi Epic/Sub-task esclusi; Resolution valide: Done/Fixed/Resolved/Answered
+tipi Epic/Sub-task esclusi; singole issue escluse con `exclude_keys` (via da tutto il report con `metrics.in_scope`, in items.csv "escluso da config"; key assenti dagli export = avviso); Resolution valide: Done/Fixed/Resolved/Answered
 (Unresolved/Open valgono solo se lo Status e' Done: Resolution mai impostata).
 L'export `input_completed` contiene solo gli item entrati in Done nel periodo di estrazione: `period_start`/`period_end` in config
 escludono le consegne fuori periodo ("fuori periodo" in items.csv) e limitano finestre (3/6 mesi) e trend ai mesi del periodo.

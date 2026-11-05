@@ -116,6 +116,7 @@
   .info-btn { color: var(--tblr-secondary); margin-left: .15rem; }
   .info-btn .icon { width: 1.1rem; height: 1.1rem; }
   .info-pop { position: absolute; top: calc(100% + .4rem); left: 0; z-index: 1030; width: min(420px, calc(100vw - 2rem)); text-align: left; }
+  .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: baseline; }
   @media print { .theme-toggle, .nav-tabs, .report-tabs { display: none !important; } .tab-pane, .main-pane[hidden] { display: block !important; } }
 </style>
 </head>
@@ -362,7 +363,7 @@
 
   {{ info_title() }}
   <div class="card"><div class="card-body info-body">
-    <p>Ogni issue (esclusi {{ cfg.exclude_issue_types|join(", ") }}) con il tempo diviso in fasi, in giorni di calendario. Per gli item aperti &egrave; il tempo trascorso finora.
+    <p>Ogni issue (esclusi {{ cfg.exclude_issue_types|join(", ") }}{% if cfg.exclude_keys %} e {{ cfg.exclude_keys|length }} issue indicate in configurazione{% endif %}) con il tempo diviso in fasi, in giorni di calendario. Per gli item aperti &egrave; il tempo trascorso finora.
       <b>Attesa</b> = stati di coda ({{ cfg.queue_statuses|join(", ") }}), anche se l'item ci torna dopo essere stato preso in carico;
       <b>Lavoro</b> = tutti gli stati attivi (sviluppo e test); <b>Attesa rilascio</b> = {{ cfg.release_wait_statuses|join(" + ") }}.</p>
     <p class="mb-0">Le card in alto considerano le issue degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}): aperte alla fine dei dati oppure chiuse nel periodo, consegnate o scartate.
@@ -487,7 +488,7 @@
     <p>Quanti item erano aperti <b>a fine mese</b>, ricostruiti dalle transizioni di stato dell'export. Le barre sono il <b>backlog</b>,
       cio&egrave; gli item in coda e non ancora presi in carico ({{ cfg.queue_statuses|join(", ") }}), divisi per classe; la linea tratteggiata &egrave; il <b>WIP</b>,
       gli item in lavorazione (tutti gli altri stati non chiusi, compresa l'attesa di rilascio). Un item esce dal conteggio quando entra in uno stato chiuso
-      ({{ cfg.closed_statuses|join(", ") }}), anche se scartato. Esclusi {{ cfg.exclude_issue_types|join(", ") }}; l'ultimo mese &egrave; fotografato all'ultima data presente nei dati ({{ end }}).
+      ({{ cfg.closed_statuses|join(", ") }}), anche se scartato. Esclusi {{ cfg.exclude_issue_types|join(", ") }}{% if cfg.exclude_keys %} e {{ cfg.exclude_keys|length }} issue indicate in configurazione{% endif %}; l'ultimo mese &egrave; fotografato all'ultima data presente nei dati ({{ end }}).
       Un backlog che cresce mese dopo mese indica che entra pi&ugrave; lavoro di quanto se ne consegna; un WIP alto allunga i tempi di tutti.</p>
     <p>{% if src.has_all %}Backlog calcolato sull'export completo: {{ src.both + src.only_all }} issue, di cui {{ src.open }} aperte alla fine dei dati.
       {% else %}Senza l'export completo il backlog considera solo le issue consegnate ed &egrave; sottostimato.{% endif %}</p>
@@ -518,7 +519,8 @@
     </div>
     <div class="col-lg-8">
       <div class="card h-100">
-        <div class="card-header"><h3 class="card-title">Andamento progressivo</h3></div>
+        <div class="card-header"><h3 class="card-title">Consegne per mese (item a settimana)</h3>
+          <div class="card-actions small text-secondary"><span class="legend-dot" style="background:#2e86ab"></span> ultimi {{ tk.win.months }} mesi &nbsp; <span class="legend-dot" style="background:var(--tblr-secondary,#9ca3af)"></span> {{ tk.win.prev_months }} mesi precedenti</div></div>
         <div class="card-body"><div id="chartDeployCum" class="chart chart-xs"></div></div>
       </div>
     </div>
@@ -540,8 +542,8 @@
     <p>Item entrati in <b>{{ cfg.done_status }}</b> (= produzione) in ciascun mese, divisi per classe; la linea tratteggiata &egrave; il totale del mese, per leggere l'andamento.
       Si contano solo gli item validi (stessi filtri del lead time: tipi e Resolution esclusi, giorni di bonifica ignorati); l'ultimo mese pu&ograve; essere parziale (dati fino al {{ end }}).</p>
     <p class="mb-0"><b>KPI</b>: consegne degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}) contro i {{ tk.win.prev_months }} precedenti ({{ tk.win.prev }}); i periodi durano diverso, quindi la variazione confronta le consegne a settimana.
-      L'<b>andamento progressivo</b> sovrappone i due periodi giorno per giorno (giorno 1 = inizio del periodo): se la linea piena sta sopra quella tratteggiata,
-      a parit&agrave; di giorni si &egrave; consegnato di pi&ugrave; (il periodo precedente &egrave; pi&ugrave; lungo, la sua linea prosegue oltre).</p>
+      Il grafico mostra, per ogni mese, il <b>ritmo a settimana</b> (barre blu = ultimi mesi, grigie = mesi precedenti); la linea tratteggiata ne segue l'andamento.
+      Se le barre blu stanno sopra quelle grigie si consegna di pi&ugrave; di prima. Un mese parziale ai bordi del confronto &egrave; riportato ai soli giorni coperti</p>
   </div></div>
   </section>
 
@@ -570,7 +572,8 @@
       <ul class="mb-0">
         <li>i contenitori o i pezzi di altre attivit&agrave;: {{ cfg.exclude_issue_types|join(", ") }};</li>
         <li>quelle chiuse senza essere fatte (es. &laquo;Won't Do&raquo;, &laquo;Duplicate&raquo;): non sono consegne;</li>
-        <li>i giorni di &laquo;pulizia&raquo; in cui pi&ugrave; di {{ cfg.bulk_done_threshold }} attivit&agrave; sono state chiuse in blocco{% if bulk %} ({{ bulk|join(", ") }}){% endif %}: non sono rilasci veri.</li>
+        <li>i giorni di &laquo;pulizia&raquo; in cui pi&ugrave; di {{ cfg.bulk_done_threshold }} attivit&agrave; sono state chiuse in blocco{% if bulk %} ({{ bulk|join(", ") }}){% endif %}: non sono rilasci veri;</li>
+        {% if cfg.exclude_keys %}<li>{{ cfg.exclude_keys|length }} attivit&agrave; indicate una per una in configurazione, ad esempio perch&eacute; chiuse da tempo e &laquo;richiuse&raquo; in blocco da una bonifica: non compaiono in nessuna sezione del report.</li>{% endif %}
       </ul>
     {% endcall %}
     {% call faq("Cosa sono le \"classi\"?") %}
@@ -801,20 +804,22 @@
     };
   }
 
-  // consegne progressive: ultimi N mesi contro i N precedenti, giorno per giorno
+  // consegne per mese (item a settimana): barre colorate per periodo, linea tratteggiata = andamento
   function deployCum(t, P) {
-    var o = base(t), n = Math.max(P.last.length, P.prev.length), days = [];
-    for (var i = 1; i <= n; i++) days.push(i);
-    o.tooltip.axisPointer = { type: "line" };
+    var o = base(t), g = "#2e86ab";
+    o.legend.show = false;
     o.tooltip.formatter = function (ps) {
-      return "Giorno " + ps[0].axisValue + ps.map(function (p) { return "<br>" + p.marker + p.seriesName + ": <b>" + (p.value == null ? "-" : p.value) + "</b>"; }).join("");
+      var i = ps[0].dataIndex;
+      return ps[0].axisValue + "<br><b>" + P.per_week[i] + "</b> item a settimana (" + P.n[i] + " in totale)<br>" +
+        '<span style="color:' + t.muted + '">' + (P.last[i] ? P.last_label : P.prev_label) + "</span>";
     };
-    o.xAxis = xAxis(t, days); o.xAxis.name = "giorno"; o.xAxis.nameTextStyle = { color: t.muted }; o.xAxis.axisLabel.interval = 14;
-    o.yAxis = yAxis(t, "item consegnati");
+    o.xAxis = xAxis(t, P.months); o.yAxis = yAxis(t, "item a settimana");
     o.series = [
-      { name: P.prev_label, type: "line", data: P.prev, symbol: "none", lineStyle: { width: 2, type: "dashed", color: t.muted }, itemStyle: { color: t.muted } },
-      { name: P.last_label, type: "line", data: P.last, symbol: "none", lineStyle: { width: 3, color: "#2e86ab" }, itemStyle: { color: "#2e86ab" },
-        areaStyle: { color: "#2e86ab", opacity: .08 } }
+      { name: "Consegne", type: "bar", barMaxWidth: 46, z: 1,
+        data: P.per_week.map(function (v, i) { return { value: v, itemStyle: { color: P.last[i] ? g : t.muted, borderRadius: [4, 4, 0, 0] } }; }),
+        label: { show: true, position: "top", color: t.text, fontWeight: 600 } },
+      { name: "Andamento", type: "line", data: P.per_week, symbolSize: 7, lineStyle: { width: 2, type: "dashed", color: t.text }, itemStyle: { color: t.text }, z: 3,
+        tooltip: { show: false } }
     ];
     return o;
   }

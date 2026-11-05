@@ -35,6 +35,11 @@ def period_bounds(cfg):
     return start, end
 
 
+def in_scope(it, cfg):
+    """Item da considerare ovunque (backlog e tab Issue compresi): ne' tipi esclusi ne' key in exclude_keys."""
+    return ~it["Issue Type"].isin(cfg["exclude_issue_types"]) & ~it.Key.isin(cfg.get("exclude_keys") or [])
+
+
 def prepare(df, ev, cfg):
     """Un record per item con data di produzione, lead time e flag di inclusione."""
     done = ev[ev.status == cfg["done_status"]].copy()
@@ -64,6 +69,7 @@ def prepare(df, ev, cfg):
 
     it["excl_reason"] = ""
     it.loc[it["Issue Type"].isin(cfg["exclude_issue_types"]), "excl_reason"] = "tipo escluso"
+    it.loc[(it.excl_reason == "") & it.Key.isin(cfg.get("exclude_keys") or []), "excl_reason"] = "escluso da config"
     ok_res = it.Resolution.isin(cfg["include_resolutions"]) | (
         it.Resolution.isin(cfg.get("default_resolutions", [])) & (it.Status == cfg["done_status"]))
     m = (it.excl_reason == "") & ~ok_res
@@ -149,9 +155,9 @@ def monthly_leadtime(it, cfg, today, col="lead_days"):
 
 
 def state_at(it, ev, cfg, t):
-    """Fase (backlog/wip/chiuso) di ogni item all'istante t, ricostruita dalle transizioni (tipi esclusi esclusi)."""
-    base = it[~it["Issue Type"].isin(cfg["exclude_issue_types"])][["Key", "class", "Created"]]
-    e = ev[ev.Key.isin(base.Key) & (ev.ts <= t)].sort_values("ts")
+    """Fase (backlog/wip/chiuso) di ogni item all'istante t, ricostruita dalle transizioni (solo item in_scope)."""
+    base = it[in_scope(it, cfg)][["Key", "class", "Created"]]
+    e = ev[ev.Key.isin(base.Key) & (ev.ts <= t)].sort_values("ts", kind="stable")
     last = e.groupby("Key").tail(1).set_index("Key").status
     st = base.set_index("Key").join(last.rename("status"))
     st = st[st.Created <= t]
@@ -175,7 +181,7 @@ def snapshots(it, ev, cfg, today):
 
 def backlog_now(it, ev, cfg, today):
     """Stato attuale dalla colonna Status dell'export (affidabile solo se l'export contiene gli item aperti)."""
-    o = it[~it["Issue Type"].isin(cfg["exclude_issue_types"]) & ~it.Status.isin(cfg["closed_statuses"])]
+    o = it[in_scope(it, cfg) & ~it.Status.isin(cfg["closed_statuses"])]
     return o[["Key", "Issue Type", "class", "Status", "Created", "Summary"]].assign(
         age_days=(today - o.Created).dt.total_seconds() / 86400)
 
@@ -307,8 +313,7 @@ def sources_check(it, cfg, has_all):
     """Confronto fra export 'done' e export 'all': quante issue per fonte e incongruenze fra i due perimetri.
     Senza export 'all' il backlog e' ricostruito solo dagli item consegnati (sottostimato)."""
     n = it.fonte.value_counts()
-    excl = it["Issue Type"].isin(cfg["exclude_issue_types"])
-    open_ = ~excl & ~it.Status.isin(cfg["closed_statuses"])
+    open_ = in_scope(it, cfg) & ~it.Status.isin(cfg["closed_statuses"])
     out = {"has_all": has_all, "both": int(n.get("entrambi", 0)), "only_done": int(n.get("solo done", 0)),
            "only_all": int(n.get("solo all", 0)), "open": int(open_.sum()), "warnings": []}
     p_start = period_bounds(cfg)[0]
@@ -326,6 +331,10 @@ def sources_check(it, cfg, has_all):
                     "altrimenti il backlog storico e' sottostimato.") if old else ""
             out["warnings"].append(f"{len(extra)} issue dell'export delle consegne mancano nell'export completo ({ex(extra)}): "
                                    f"i due export non coprono lo stesso perimetro.{hint}")
+    # un refuso in exclude_keys non escluderebbe nulla, in silenzio
+    unknown = sorted(set(cfg.get("exclude_keys") or []) - set(it.Key))
+    if unknown:
+        out["warnings"].append(f"{len(unknown)} key in `exclude_keys` non presenti negli export: {', '.join(unknown[:5])}" + ("..." if len(unknown) > 5 else "") + ".")
     # tipi senza regola di classe ne' esclusione: finiscono in "Altro" e contano come lavoro vero (es. record di test)
     ruled = {t for r in cfg["classes"] for t in r.get("issue_types", [])} | set(cfg["exclude_issue_types"])
     unk = it[~it["Issue Type"].isin(ruled)]["Issue Type"].value_counts()
@@ -417,20 +426,26 @@ def backlog_kpi(it, ev, cfg, end):
 
 
 def deploy_kpi(it, cfg, end):
-    """Consegne in produzione negli ultimi kpi_months mesi contro i precedenti e andamento progressivo giorno per
-    giorno dei due periodi sovrapposti (giorno 1 = primo giorno del periodo)."""
+    """Consegne in produzione negli ultimi kpi_months mesi contro i precedenti e andamento per mese di calendario:
+    consegne e ritmo a settimana (il mese parziale ai bordi del confronto si normalizza sui giorni coperti, sotto 7 giorni non ha barra);
+    ogni mese appartiene al periodo che ne contiene la maggior parte."""
     start, cut, end = kpi_bounds(cfg, end)
     tol = cfg.get("trend_tolerance", 0.10)
     d = it[it.valid & it.prod_date.notna()].prod_date
 
-    def progressive(a, b):
-        days = int(np.ceil((b - a).total_seconds() / 86400))
-        return [int(((d > a) & (d <= min(a + pd.Timedelta(days=i), b))).sum()) for i in range(1, days + 1)]
-    last, prev = progressive(cut, end), progressive(start, cut)
-    n_last, n_prev = (last[-1] if last else 0), (prev[-1] if prev else 0)
+    n_last, n_prev = int(((d > cut) & (d <= end)).sum()), int(((d > start) & (d <= cut)).sum())
+    months = []
+    for p in pd.period_range(start + pd.Timedelta(minutes=1), end, freq="M"):
+        a, b = max(p.start_time - pd.Timedelta(minutes=1), start), min(p.end_time, end)
+        days = (b - a).total_seconds() / 86400
+        if days < 7:      # bordo di pochi giorni: ritmo non significativo, resta nei totali ma non ha una barra
+            continue
+        n = int(((d > a) & (d <= b)).sum())
+        mid = a + (b - a) / 2
+        months.append({"month": p, "n": n, "per_week": n / days * 7, "period": "last" if mid > cut else "prev"})
     delta = _rate_delta(n_last, n_prev, (start, cut, end))
     return {"now": n_last, "before": n_prev, "delta": delta, "trend": _trend(delta, "high", tol),
-            "per_week": n_last / max((end - cut).days, 1) * 7, "per_week_before": n_prev / max((cut - start).days, 1) * 7, "last": last, "prev": prev,
+            "per_week": n_last / max((end - cut).days, 1) * 7, "per_week_before": n_prev / max((cut - start).days, 1) * 7, "months": months,
             "bounds": (start, cut, end)}
 
 
@@ -446,7 +461,7 @@ def recent_mask(it, ev, cfg, end):
 def anomaly_kpi(it, cfg, mask=None):
     """Issue del tab Issue (tipi esclusi a parte; solo `mask` se dato, es. recent_mask) e quante hanno anomalie
     per fase (giallo o rosso)."""
-    v = it[~it["Issue Type"].isin(cfg["exclude_issue_types"]) & (True if mask is None else mask)]
+    v = it[in_scope(it, cfg) & (True if mask is None else mask)]
     n = len(v)
     out = {"n": n, "open": int((~v.Status.isin(cfg["closed_statuses"])).sum()),
            "any": int((v[[f"{p}_flag" for p in PHASES]] > 0).any(axis=1).sum())}

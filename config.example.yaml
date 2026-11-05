@@ -31,6 +31,9 @@ period_end: 2026-06-30    # facoltativo; di default = oggi
 # Filtri
 # Tipi che non sono consegne ne' lavoro (es. record dei casi di test)
 exclude_issue_types: [Epic, Sub-task]
+# Singole issue da non considerare in tutto il report (es. item gia' chiusi e "richiusi" da una bonifica troppo piccola per
+# bulk_done_threshold). Restano in items.csv con motivo "escluso da config". Esempio: exclude_keys: [PROJ-12, PROJ-34]
+exclude_keys: []
 include_resolutions: [Done, Fixed, Resolved, Answered]   # le altre (Won't Do, Duplicate...) sono scartate
 # Valori "di default" di Jira (Resolution mai impostata): valgono come consegnati SOLO se lo Status e' done_status
 default_resolutions: [Unresolved, Open]
