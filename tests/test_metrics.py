@@ -29,6 +29,33 @@ def test_nome_file_report():
     assert cli.report_filename({"project_name": "A/B: C"}, first, last) == "A-B-C_flow_report_20260115_20260220.html"
 
 
+def test_exclude_keys_fuori_da_tutto_il_report():
+    rows = [("A-1", "Task", "x", "Done", "2024-01-01 00:00", "Done", "", "", "", "2024-02-01 00:00,2026-01-10 00:00"),
+            ("A-2", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "", "", "2026-01-11 00:00"),
+            ("A-3", "Bug", "x", "To Do", "2026-01-01 00:00", "", "", "2026-01-01 00:00", "", "")]
+    d = _df(rows); d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT; d["fonte"] = "entrambi"
+    ev = load.events(d)
+    cfg = {**CFG, "exclude_keys": ["A-1", "A-3", "A-99"]}
+    it = metrics.prepare(d, ev, cfg).set_index("Key", drop=False)
+    assert it.loc["A-1", "excl_reason"] == "escluso da config" and not it.loc["A-1", "valid"]   # resta per l'audit
+    assert it.loc["A-2", "valid"]
+    assert set(it[metrics.in_scope(it, cfg)].Key) == {"A-2"}
+    assert set(metrics.state_at(it, ev, cfg, pd.Timestamp("2026-02-01")).index) == {"A-2"}       # backlog/WIP
+    assert metrics.backlog_now(it, ev, cfg, pd.Timestamp("2026-02-01")).empty                    # A-3 aperta ma esclusa
+    assert any("A-99" in w for w in metrics.sources_check(it, cfg, False)["warnings"])           # refuso segnalato
+    assert metrics.prepare(d, ev, {**CFG, "exclude_keys": None}).set_index("Key").loc["A-1", "valid"]   # opzione vuota
+
+
+def test_state_at_conserva_ordine_transizioni_stesso_minuto():
+    # molte righe: su input piccoli anche l'ordinamento non stabile sembra funzionare
+    rows = [(f"A-{i}", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "", f"2026-01-{i % 28 + 1:02d} 10:00", f"2026-01-{i % 28 + 1:02d} 10:00")
+            for i in range(500)]
+    d = _df(rows); d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT
+    ev = load.events(d)
+    st = metrics.state_at(metrics.prepare(d, ev, CFG), ev, CFG, pd.Timestamp("2026-02-01"))
+    assert (st.fase == "chiuso").all()   # In Progress e Done nello stesso minuto: vale lo Status attuale
+
+
 def test_lead_time_giorni_calendario():
     it = _prep([("A-1", "Bug", "x", "Done", "2026-01-01 00:00", "Done", "", "2026-01-01 00:00", "2026-01-02 00:00", "2026-01-11 00:00")])
     assert it.loc[0, "lead_days"] == 10 and it.loc[0, "valid"]

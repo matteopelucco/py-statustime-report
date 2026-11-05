@@ -363,7 +363,7 @@
 
   {{ info_title() }}
   <div class="card"><div class="card-body info-body">
-    <p>Ogni issue (esclusi {{ cfg.exclude_issue_types|join(", ") }}) con il tempo diviso in fasi, in giorni di calendario. Per gli item aperti &egrave; il tempo trascorso finora.
+    <p>Ogni issue (esclusi {{ cfg.exclude_issue_types|join(", ") }}{% if cfg.exclude_keys %} e {{ cfg.exclude_keys|length }} issue indicate in configurazione{% endif %}) con il tempo diviso in fasi, in giorni di calendario. Per gli item aperti &egrave; il tempo trascorso finora.
       <b>Attesa</b> = stati di coda ({{ cfg.queue_statuses|join(", ") }}), anche se l'item ci torna dopo essere stato preso in carico;
       <b>Lavoro</b> = tutti gli stati attivi (sviluppo e test); <b>Attesa rilascio</b> = {{ cfg.release_wait_statuses|join(" + ") }}.</p>
     <p class="mb-0">Le card in alto considerano le issue degli ultimi {{ tk.win.months }} mesi ({{ tk.win.last }}): aperte alla fine dei dati oppure chiuse nel periodo, consegnate o scartate.
@@ -488,7 +488,7 @@
     <p>Quanti item erano aperti <b>a fine mese</b>, ricostruiti dalle transizioni di stato dell'export. Le barre sono il <b>backlog</b>,
       cio&egrave; gli item in coda e non ancora presi in carico ({{ cfg.queue_statuses|join(", ") }}), divisi per classe; la linea tratteggiata &egrave; il <b>WIP</b>,
       gli item in lavorazione (tutti gli altri stati non chiusi, compresa l'attesa di rilascio). Un item esce dal conteggio quando entra in uno stato chiuso
-      ({{ cfg.closed_statuses|join(", ") }}), anche se scartato. Esclusi {{ cfg.exclude_issue_types|join(", ") }}; l'ultimo mese &egrave; fotografato all'ultima data presente nei dati ({{ end }}).
+      ({{ cfg.closed_statuses|join(", ") }}), anche se scartato. Esclusi {{ cfg.exclude_issue_types|join(", ") }}{% if cfg.exclude_keys %} e {{ cfg.exclude_keys|length }} issue indicate in configurazione{% endif %}; l'ultimo mese &egrave; fotografato all'ultima data presente nei dati ({{ end }}).
       Un backlog che cresce mese dopo mese indica che entra pi&ugrave; lavoro di quanto se ne consegna; un WIP alto allunga i tempi di tutti.</p>
     <p>{% if src.has_all %}Backlog calcolato sull'export completo: {{ src.both + src.only_all }} issue, di cui {{ src.open }} aperte alla fine dei dati.
       {% else %}Senza l'export completo il backlog considera solo le issue consegnate ed &egrave; sottostimato.{% endif %}</p>
@@ -572,7 +572,8 @@
       <ul class="mb-0">
         <li>i contenitori o i pezzi di altre attivit&agrave;: {{ cfg.exclude_issue_types|join(", ") }};</li>
         <li>quelle chiuse senza essere fatte (es. &laquo;Won't Do&raquo;, &laquo;Duplicate&raquo;): non sono consegne;</li>
-        <li>i giorni di &laquo;pulizia&raquo; in cui pi&ugrave; di {{ cfg.bulk_done_threshold }} attivit&agrave; sono state chiuse in blocco{% if bulk %} ({{ bulk|join(", ") }}){% endif %}: non sono rilasci veri.</li>
+        <li>i giorni di &laquo;pulizia&raquo; in cui pi&ugrave; di {{ cfg.bulk_done_threshold }} attivit&agrave; sono state chiuse in blocco{% if bulk %} ({{ bulk|join(", ") }}){% endif %}: non sono rilasci veri;</li>
+        {% if cfg.exclude_keys %}<li>{{ cfg.exclude_keys|length }} attivit&agrave; indicate una per una in configurazione, ad esempio perch&eacute; chiuse da tempo e &laquo;richiuse&raquo; in blocco da una bonifica: non compaiono in nessuna sezione del report.</li>{% endif %}
       </ul>
     {% endcall %}
     {% call faq("Cosa sono le \"classi\"?") %}

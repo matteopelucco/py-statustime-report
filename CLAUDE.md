@@ -52,7 +52,7 @@ mesi e, se serve un confronto, lo fa con i `kpi_prev_months` (4) precedenti (`kp
 (consegne, deployments) si confrontano come ritmo a settimana (`_rate_delta`). Badge dei tab compresi. Issue "degli ultimi
 2 mesi" = aperte a fine dati o chiuse dopo il taglio (`recent_mask`).
 Done = produzione; ultimo ingresso in Done; giorni con >300 ingressi Done = migrazione di massa, ignorati (`bulk_done_threshold`);
-tipi Epic/Sub-task esclusi; Resolution valide: Done/Fixed/Resolved/Answered
+tipi Epic/Sub-task esclusi; singole issue escluse con `exclude_keys` (via da tutto il report con `metrics.in_scope`, in items.csv "escluso da config"; key assenti dagli export = avviso); Resolution valide: Done/Fixed/Resolved/Answered
 (Unresolved/Open valgono solo se lo Status e' Done: Resolution mai impostata).
 L'export `input_completed` contiene solo gli item entrati in Done nel periodo di estrazione: `period_start`/`period_end` in config
 escludono le consegne fuori periodo ("fuori periodo" in items.csv) e limitano finestre (3/6 mesi) e trend ai mesi del periodo.

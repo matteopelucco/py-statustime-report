@@ -112,7 +112,7 @@ def _summary(cfg, it, ev, cmp, end):
     worst = max(deltas, key=deltas.get) if deltas else None
     flags = [f"{p}_flag" for p in metrics.PHASES]
     recent = it[it.valid & (it.prod_date > end - pd.Timedelta(days=d))]
-    open_ = it[~it["Issue Type"].isin(cfg["exclude_issue_types"]) & ~it.Status.isin(cfg["closed_statuses"])]
+    open_ = it[metrics.in_scope(it, cfg) & ~it.Status.isin(cfg["closed_statuses"])]
     n_alert, n_open_alert = (int((x[flags] == 2).any(axis=1).sum()) for x in (recent, open_))
     dev = [f"Dove va il tempo negli ultimi {d} giorni: {pct(r_)} (storico: {pct('hist')}).",
            (f"Fase che peggiora di pi&ugrave;: <b>{c.loc[worst, 'label'].lower()}</b>, da {_f(c.loc[worst, 'hist'])} "
@@ -125,7 +125,7 @@ def _summary(cfg, it, ev, cmp, end):
              "series": [{"name": PHASE_LBL[p], "color": PHASE_COL[p], "data": [_nan(share[w][p] * 100) for w in wins]}
                         for p in PHASE_COL]}
     a, b = cmp.attrs["windows"]["hist"]
-    listed = it[~it["Issue Type"].isin(cfg["exclude_issue_types"])]
+    listed = it[metrics.in_scope(it, cfg)]
     return {"title": title, "cls": cls, "verdict_word": verdict, "sentence": Markup(sentence),
             "n_issues": len(listed), "n_anom": int((listed[flags] > 0).any(axis=1).sum()), "n_open": bl + wip, "kpis": kpis, "rows": rows, "rec": rec, "n": n,
             "low": n[r_] < cfg["min_samples"] or n["hist"] < cfg["min_samples"],
@@ -143,7 +143,7 @@ def issue_url(cfg, key):
 
 def _issues(it, cfg, recent):
     """Righe della tabella issue (JSON, disegnata lato browser con ricerca, filtri e ordinamento)."""
-    v = it[~it["Issue Type"].isin(cfg["exclude_issue_types"])]
+    v = it[metrics.in_scope(it, cfg)]
     v = v.assign(_recent=recent.reindex(v.index).fillna(False))
     return [{"k": r["Key"], "u": issue_url(cfg, r["Key"]), "r": bool(r["_recent"]), "s": r["Summary"], "t": r["Issue Type"], "c": r["class"], "st": r["Status"],
              "o": r["Status"] not in cfg["closed_statuses"], "b": r["base_class"],
