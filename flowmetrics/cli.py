@@ -1,17 +1,29 @@
-import argparse, os
+import argparse, os, re
 import pandas as pd, yaml
 from . import load, metrics, report
 
 
+def report_filename(cfg, first, last):
+    """<project_name>_flow_report_<inizio>_<fine>.html: periodo da config; se non impostato, prima/ultima data dei dati.
+    Senza project_name il prefisso sparisce; i caratteri non validi nei nomi file diventano "-"."""
+    start, end = metrics.period_bounds(cfg)
+    name = re.sub(r"[^\w.-]+", "-", str(cfg.get("project_name") or "").strip()).strip("-")
+    parts = [name, "flow_report", f"{start or first:%Y%m%d}", f"{end or last:%Y%m%d}"]
+    return "_".join(p for p in parts if p) + ".html"
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="flowmetrics", description="Report di flusso da export Status Time Free")
-    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--config", default="config/config.yaml",
+                    help="file di configurazione (default: config/config.yaml; modello: config.example.yaml)")
     ap.add_argument("--input-completed", "--input", dest="input_completed",
                     help="export delle issue entrate in Done nel periodo (default: input_completed in config)")
     ap.add_argument("--input-all", help="export di TUTTE le issue del periodo, aperte comprese (default: input_all in config; "
                                         "'' per non usarlo)")
     ap.add_argument("--today", help="YYYY-MM-DD (default: oggi)")
     a = ap.parse_args(argv)
+    if not os.path.exists(a.config):
+        ap.error(f"config non trovata: {a.config} (copiare config.example.yaml in config/config.yaml)")
     with open(a.config, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     path = a.input_completed or cfg.get("input_completed") or cfg["input"]   # "input": nome storico
@@ -33,8 +45,9 @@ def main(argv=None):
     it.drop(columns=[c for c in it.columns if c.startswith(("'->", "#"))]).to_csv(f"{out}/items.csv", index=False)
     fc.to_csv(f"{out}/forecast.csv", index=False); cyc.to_csv(f"{out}/cycle_forecast.csv", index=False); thr.to_csv(f"{out}/throughput.csv"); snap.to_csv(f"{out}/backlog_history.csv", index=False)
     cmp.to_csv(f"{out}/summary.csv", index=False)
-    report.render(cfg, today, end, it, ev, fc, thr, lead, snap, bnow, cyc, cyl, cmp, src, f"{out}/report.html")
-    print(f"OK: {out}/report.html  (item validi {int(it.valid.sum())}/{len(it)})")
+    html_path = f"{out}/{report_filename(cfg, ev.ts.min() if len(ev) else end, end)}"
+    report.render(cfg, today, end, it, ev, fc, thr, lead, snap, bnow, cyc, cyl, cmp, src, html_path)
+    print(f"OK: {html_path}  (item validi {int(it.valid.sum())}/{len(it)})")
     for w in src["warnings"]:
         print(f"ATTENZIONE: {w}")
 

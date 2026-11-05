@@ -1,8 +1,8 @@
 from pathlib import Path
 import pandas as pd, yaml
-from flowmetrics import load, metrics
+from flowmetrics import cli, load, metrics
 
-with open(Path(__file__).resolve().parent.parent / "config.yaml", encoding="utf-8") as _f:
+with open(Path(__file__).resolve().parent.parent / "config.example.yaml", encoding="utf-8") as _f:
     CFG = yaml.safe_load(_f)
 CFG["bulk_done_threshold"] = 2
 CFG.pop("period_start", None); CFG.pop("period_end", None)   # i test usano date di gennaio
@@ -18,6 +18,15 @@ def _prep(rows):
     d = _df(rows)
     d["Created"] = pd.to_datetime(d["Created"]); d["Resolved"] = pd.NaT
     return metrics.prepare(d, load.events(d), CFG)
+
+
+def test_nome_file_report():
+    first, last = pd.Timestamp("2026-01-15 10:00"), pd.Timestamp("2026-02-20 18:00")
+    cfg = {"project_name": "PS", "period_start": "2026-04-01", "period_end": "2026-09-30"}
+    assert cli.report_filename(cfg, first, last) == "PS_flow_report_20260401_20260930.html"
+    # periodo non impostato: date dei dati; progetto vuoto: niente prefisso; caratteri non validi sostituiti
+    assert cli.report_filename({"project_name": ""}, first, last) == "flow_report_20260115_20260220.html"
+    assert cli.report_filename({"project_name": "A/B: C"}, first, last) == "A-B-C_flow_report_20260115_20260220.html"
 
 
 def test_lead_time_giorni_calendario():

@@ -9,7 +9,7 @@ Query Jira: `input_all` deve essere un SOVRAINSIEME di `input_completed` (stessa
 Non usare "status CHANGED TO In Progress DURING": perde le issue gia' avviate prima del periodo e chiuse dentro (e il backlog mai toccato).
 
     pip install -r requirements.txt
-    python -m flowmetrics --config config.yaml            # scrive out/report.html + CSV
+    python -m flowmetrics --config config/config.yaml     # scrive out/<project_name>_flow_report_<period_start>_<period_end>.html + CSV
     python -m flowmetrics --input-completed data/done.csv --input-all data/all.csv --today 2026-07-07
     pytest
 
@@ -39,7 +39,8 @@ Cycle time = dal primo ingresso in `cycle_start_status` (In Progress) alla produ
 Tabelle del report: righe da `report_classes` (+ Tutti = tutti gli item validi).
 
 ## Struttura
-- `config.yaml` tutte le regole di business (classi, filtri, soglie). Primo posto dove intervenire.
+- `config/` (ignorata da git; default `config/config.yaml`) tutte le regole di business (classi, filtri, soglie). Primo posto dove intervenire.
+- `config.example.yaml` modello versionato da copiare in `config/`; anche i test leggono questo. Nuove opzioni: aggiungerle qui.
 - `flowmetrics/load.py` parsing export; `metrics.py` calcoli (funzioni pure); `report.py` + `templates/report.html.j2` HTML; `cli.py`.
 - `flowmetrics/vendor/` Tabler (CSS, MIT) ed Apache ECharts (JS) incorporati nel report: nessuna dipendenza esterna, si apre offline.
 - `tests/` regole verificate su dati sintetici. Ogni nuova regola = un test.
