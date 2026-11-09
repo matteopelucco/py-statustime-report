@@ -27,6 +27,7 @@ def test_nome_file_report():
     # periodo non impostato: date dei dati; progetto vuoto: niente prefisso; caratteri non validi sostituiti
     assert cli.report_filename({"project_name": ""}, first, last) == "flow_report_20260115_20260220.html"
     assert cli.report_filename({"project_name": "A/B: C"}, first, last) == "A-B-C_flow_report_20260115_20260220.html"
+    assert cli.report_filename(cfg, first, last, kind="flow_analysis", ext=".md") == "PS_flow_analysis_20260401_20260930.md"
 
 
 def test_exclude_keys_fuori_da_tutto_il_report():

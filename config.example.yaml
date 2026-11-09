@@ -92,3 +92,29 @@ kpi_tolerance_pp: 5     # variazione della % entro +/-5 punti = "stabile"
 # Anomalie nella tabella issue: fase oltre questi percentili della propria classe (intero periodo) = giallo / rosso
 anomaly_percentiles: [85, 95]
 anomaly_min_days: 1     # sotto 1 giorno non e' mai anomalia
+
+# Analisi testuale (Markdown, file separato dal report): soglie delle regole che generano commenti e attivita' proposte
+analysis:
+  release_share_max: 0.15      # attesa rilascio oltre questa quota del tempo totale = rilasci da accorciare
+  release_wait_epic_days: 30   # epic con attesa rilascio mediana oltre N giorni = lotto rilasciato tardi
+  min_epic_items: 5            # epic con meno item non vengono commentate
+  uat_open_min: 10             # item aperti in attesa di rilascio oltre cui si propone un responsabile del collaudo
+  stale_queue_days: 90         # item in coda da oltre N giorni = da rivedere
+  long_wip_days: 120           # item in lavorazione da oltre N giorni = da sbloccare
+  reentry_gap_days: 30         # rientro Done -> Done dopo oltre N giorni = probabile bonifica (da mettere in exclude_keys)
+  spread_wide: 3.5             # P85/P50 oltre questo rapporto = tempi poco prevedibili
+  expedite_p85_max: 30         # Expedite con P85 oltre N giorni = corsia veloce che non funziona
+  max_actions: 5               # attivita' proposte al massimo
+
+# KPI standard: 8 indicatori a colpo d'occhio (card in testa alla Sintesi del report e tabella nell'analisi).
+# Ultimi kpi_months mesi contro i kpi_prev_months precedenti. Stato: verde se il valore e' dalla parte buona di
+# `green`, rosso se oltre `red`, giallo in mezzo. Consegne e backlog: soglie sulla variazione (+0.05 = +5%).
+standard_kpis:
+  throughput_delta: {green: 0.0, red: -0.25}
+  lead_p50: {green: 25, red: 40}          # giorni
+  cycle_p50: {green: 15, red: 30}         # giorni
+  work_wait: {green: 0.75, red: 0.50}     # giorni di lavoro per giorno di attesa (coda + attesa rilascio)
+  release_share: {green: 0.15, red: 0.25}
+  balance: {green: 1.0, red: 1.2}         # create / consegnate
+  wip_delta: {green: 0.05, red: 0.20}     # work in progress: soglie sulla variazione
+  backlog_delta: {green: 0.05, red: 0.20}

@@ -61,6 +61,8 @@ File di esempio in root: `sample-data-done.csv` (issue consegnate) e `sample-dat
 (le stesse più issue ipotetiche aperte e scartate).
 
 Output in `out/`:
+- `<project_name>_flow_analysis_<period_start>_<period_end>.md` — analisi testuale separata dal report (sintesi, le 5 domande,
+  dati significativi, attività proposte, limiti), generata a ogni esecuzione con regole e soglie del blocco `analysis` in config
 - `<project_name>_flow_report_<period_start>_<period_end>.html` (es. `PS_flow_report_20260401_20260930.html`) — report completo, si apre offline nel browser. Sezioni: 1. Sintesi (ultimi 30/60 giorni vs storico),
   2. Issue (tempo per fase con anomalie), 3. Lead time / Cycle time, 4. Backlog, 5. Deployments
 - `summary.csv` — metriche della sintesi (storico, ultimi 30/60 giorni, variazione)

@@ -220,6 +220,7 @@ def phases(it, ev, cfg, end):
     gap = gap.where(first.notna() | open_, 0).clip(lower=0).fillna(0)
     out["wait_days"] += gap
     out["flow_days"] = out[PHASES[:3]].sum(axis=1)
+    out.attrs = dict(it.attrs)   # merge perde gli attrs (bulk_days, missing_fields) usati da report e analisi
     return out
 
 

@@ -9,14 +9,18 @@ Query Jira: `input_all` deve essere un SOVRAINSIEME di `input_completed` (stessa
 Non usare "status CHANGED TO In Progress DURING": perde le issue gia' avviate prima del periodo e chiuse dentro (e il backlog mai toccato).
 
     pip install -r requirements.txt
-    python -m flowmetrics --config config/config.yaml     # scrive out/<project_name>_flow_report_<period_start>_<period_end>.html + CSV
+    python -m flowmetrics --config config/config.yaml     # scrive out/<project_name>_flow_report_<period_start>_<period_end>.html,
+                                                          # l'analisi out/<project_name>_flow_analysis_<...>.md e i CSV
     python -m flowmetrics --input-completed data/done.csv --input-all data/all.csv --today 2026-07-07
     pytest
 
 Funziona uguale su Mac e Windows (Python 3.10+).
 
 ## Cosa risponde (sezioni del report)
-1. Sintesi: ultimi `recent_days` (30/60) giorni contro lo storico (consegne da inizio periodo a 60 gg fa); verdetto
+1. Sintesi: in testa gli 8 KPI standard (`flowmetrics/kpi.py`, stessi nell'analisi): consegne/settimana, lead time P50,
+   cycle time P50 (affiancati per confrontarli), WIP, rapporto lavoro/attesa (attesa = coda + attesa rilascio),
+   quota attesa rilascio, bilancio create/consegnate, dimensione backlog; regola KPI (2 vs 4 mesi), trend + stato
+   verde/giallo/rosso con soglie `standard_kpis` (consegne, WIP e backlog sulla variazione). Poi ultimi `recent_days` (30/60) giorni contro lo storico (consegne da inizio periodo a 60 gg fa); verdetto
    migliora/peggiora/stabile su lead time P50/P85, cycle time P50, consegne/settimana (soglia `trend_tolerance`);
    messaggi per business e sviluppatori; quota del tempo per fase. Esportata anche in `out/summary.csv`.
 2. Issue: tempo per fase (attesa = `queue_statuses`, attesa rilascio = `release_wait_statuses`, lavoro = altri stati non chiusi).
@@ -41,6 +45,9 @@ Tabelle del report: righe da `report_classes` (+ Tutti = tutti gli item validi).
 ## Struttura
 - `config/` (ignorata da git; default `config/config.yaml`) tutte le regole di business (classi, filtri, soglie). Primo posto dove intervenire.
 - `config.example.yaml` modello versionato da copiare in `config/`; anche i test leggono questo. Nuove opzioni: aggiungerle qui.
+- `flowmetrics/analysis.py` analisi testuale in Markdown, file separato (MAI dentro il report): sintesi, le 5 domande,
+  dati significativi, attivita' proposte (regole in `actions`, soglie nel blocco `analysis` di config), limiti.
+  Ogni frase deve nascere da una regola verificabile sui dati; nuove regole = un test in `tests/test_analysis.py`.
 - `flowmetrics/load.py` parsing export; `metrics.py` calcoli (funzioni pure); `report.py` + `templates/report.html.j2` HTML; `cli.py`.
 - `flowmetrics/vendor/` Tabler (CSS, MIT) ed Apache ECharts (JS) incorporati nel report: nessuna dipendenza esterna, si apre offline.
 - `tests/` regole verificate su dati sintetici. Ogni nuova regola = un test.

@@ -5,7 +5,7 @@ from urllib.parse import quote
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
-from . import metrics
+from . import kpi, metrics
 
 HERE = Path(__file__).parent
 COL = {"Bug": "#d1495b", "Story (senza Epic)": "#2e86ab", "Story (con Epic)": "#7fb6d3", "Story": "#2e86ab", "Task": "#66a182", "Altro": "#8d6a9f", "Expedite": "#f76707", "TUTTI": "#6b7280"}
@@ -81,15 +81,9 @@ def _summary(cfg, it, ev, cmp, end):
     cnt = lambda st, f: int((st.fase == f).sum())
     bl, bl0, wip, wip0 = cnt(now, "backlog"), cnt(before, "backlog"), cnt(now, "wip"), cnt(before, "wip")
 
-    def kpi(k, label, unit="giorni"):
-        r = c.loc[k]
-        return {"label": label, "value": _f(r[r_]), "unit": unit, "delta": _delta(r[f"delta_{r_}"]),
-                "cls": TREND_CLS[r[f"trend_{r_}"]], "note": f"storico {_f(r['hist'])}"}
-    kpis = [kpi("lead_p50", f"Lead time P50 · ultimi {d} gg"), kpi("lead_p85", f"Lead time P85 · ultimi {d} gg"),
-            kpi("throughput", f"Consegne a settimana · ultimi {d} gg", "item"),
-            {"label": "Item aperti (coda + lavorazione)", "value": bl + wip, "unit": "item",
-             "delta": _delta((bl + wip) / (bl0 + wip0) - 1) if bl0 + wip0 else "-", "cls": "bg-secondary-lt",
-             "note": f"{d} giorni fa: {bl0 + wip0}"}]
+    std = kpi.standard_kpis(it, ev, cfg, end)   # card in testa alla Sintesi: KPI standard (stessi dell'analisi)
+    for k in std["kpis"]:
+        k["cls"] = TREND_CLS[k["trend"]]
 
     rows = [{"label": r["label"], "hist": _val(r["hist"], r["unit"]),
              "rec": [{"v": _val(r[f"r{x}"], r["unit"]), "delta": _delta(r[f"delta_r{x}"]), "trend": r[f"trend_r{x}"],
@@ -127,7 +121,7 @@ def _summary(cfg, it, ev, cmp, end):
     a, b = cmp.attrs["windows"]["hist"]
     listed = it[metrics.in_scope(it, cfg)]
     return {"title": title, "cls": cls, "verdict_word": verdict, "sentence": Markup(sentence),
-            "n_issues": len(listed), "n_anom": int((listed[flags] > 0).any(axis=1).sum()), "n_open": bl + wip, "kpis": kpis, "rows": rows, "rec": rec, "n": n,
+            "n_issues": len(listed), "n_anom": int((listed[flags] > 0).any(axis=1).sum()), "n_open": bl + wip, "std": std, "rows": rows, "rec": rec, "n": n,
             "low": n[r_] < cfg["min_samples"] or n["hist"] < cfg["min_samples"],
             "biz": [Markup(x) for x in biz], "dev": [Markup(x) for x in dev], "chart": chart,
             "hist_from": a.strftime("%d/%m/%Y"), "hist_to": b.strftime("%d/%m/%Y")}

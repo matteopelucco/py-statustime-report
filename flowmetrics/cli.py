@@ -1,15 +1,15 @@
 import argparse, os, re
 import pandas as pd, yaml
-from . import load, metrics, report
+from . import analysis, load, metrics, report
 
 
-def report_filename(cfg, first, last):
-    """<project_name>_flow_report_<inizio>_<fine>.html: periodo da config; se non impostato, prima/ultima data dei dati.
+def report_filename(cfg, first, last, kind="flow_report", ext=".html"):
+    """<project_name>_<kind>_<inizio>_<fine><ext>: periodo da config; se non impostato, prima/ultima data dei dati.
     Senza project_name il prefisso sparisce; i caratteri non validi nei nomi file diventano "-"."""
     start, end = metrics.period_bounds(cfg)
     name = re.sub(r"[^\w.-]+", "-", str(cfg.get("project_name") or "").strip()).strip("-")
-    parts = [name, "flow_report", f"{start or first:%Y%m%d}", f"{end or last:%Y%m%d}"]
-    return "_".join(p for p in parts if p) + ".html"
+    parts = [name, kind, f"{start or first:%Y%m%d}", f"{end or last:%Y%m%d}"]
+    return "_".join(p for p in parts if p) + ext
 
 
 def main(argv=None):
@@ -45,9 +45,14 @@ def main(argv=None):
     it.drop(columns=[c for c in it.columns if c.startswith(("'->", "#"))]).to_csv(f"{out}/items.csv", index=False)
     fc.to_csv(f"{out}/forecast.csv", index=False); cyc.to_csv(f"{out}/cycle_forecast.csv", index=False); thr.to_csv(f"{out}/throughput.csv"); snap.to_csv(f"{out}/backlog_history.csv", index=False)
     cmp.to_csv(f"{out}/summary.csv", index=False)
-    html_path = f"{out}/{report_filename(cfg, ev.ts.min() if len(ev) else end, end)}"
-    report.render(cfg, today, end, it, ev, fc, thr, lead, snap, bnow, cyc, cyl, cmp, src, html_path)
-    print(f"OK: {html_path}  (item validi {int(it.valid.sum())}/{len(it)})")
+    first = ev.ts.min() if len(ev) else end
+    html_name = report_filename(cfg, first, end)
+    report.render(cfg, today, end, it, ev, fc, thr, lead, snap, bnow, cyc, cyl, cmp, src, f"{out}/{html_name}")
+    print(f"OK: {out}/{html_name}  (item validi {int(it.valid.sum())}/{len(it)})")
+    # analisi testuale a parte (Markdown), mai dentro il report
+    md_path = f"{out}/{report_filename(cfg, first, end, kind='flow_analysis', ext='.md')}"
+    analysis.render(cfg, today, end, df, it, ev, fc, cyc, snap, cmp, src, html_name, md_path)
+    print(f"OK: {md_path}")
     for w in src["warnings"]:
         print(f"ATTENZIONE: {w}")
 
