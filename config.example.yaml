@@ -11,6 +11,9 @@ input_all: data/all.csv
 # -----------------------------------------------------------------------------------------------------
 
 output_dir: out
+# Titoli riservati (vedi README): true = la CLI rifiuta export con titoli in chiaro, accetta solo le copie anonime
+# prodotte da `python -m flowmetrics.privacy anonymize`. Il report finale con i titoli si genera con --reveal.
+require_anonymized: false
 # Link di dettaglio della issue nel report: ${issueKey} viene sostituito con la key (es. PROJ-123). Vuoto = nessun link.
 issue_url: "https://jira.example.com/browse/${issueKey}"
 

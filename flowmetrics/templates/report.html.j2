@@ -192,6 +192,10 @@
   <p class="section-sub">Dati fino al <b>{{ end }}</b>. Gli ultimi {{ summ.rec|join(" e ") }} giorni sono confrontati con lo <b>storico</b>:
     consegne dal {{ summ.hist_from }} al {{ summ.hist_to }} ({{ summ.n.hist }} item).</p>
 
+  {% if anon %}
+  <div class="alert alert-info" role="alert"><div><b>Report di lavoro, titoli nascosti:</b> al posto dei titoli compaiono segnaposto del tipo
+    <code>[[T:CHIAVE]]</code>. Il report finale con i titoli si genera in locale con <code>--reveal</code>.</div></div>
+  {% endif %}
   {% for w in src.warnings %}
   <div class="alert alert-warning" role="alert"><div><b>Export non allineati:</b> {{ w }}</div></div>
   {% endfor %}

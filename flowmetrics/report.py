@@ -5,7 +5,7 @@ from urllib.parse import quote
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
-from . import kpi, metrics
+from . import kpi, metrics, privacy
 
 HERE = Path(__file__).parent
 COL = {"Bug": "#d1495b", "Story (senza Epic)": "#2e86ab", "Story (con Epic)": "#7fb6d3", "Story": "#2e86ab", "Task": "#66a182", "Altro": "#8d6a9f", "Expedite": "#f76707", "TUTTI": "#6b7280"}
@@ -250,6 +250,7 @@ def render(cfg, today, end, it, ev, fc, thr, lead, snap, bnow, cyc, cyl, cmp, sr
         cycle=_forecast(cyc, today, pcols, wcols, with_pickup=False), missing=it.attrs.get("missing_fields", []),
         pcols=pcols, wcols=[{"n": n} for n in cfg["within_days"]], open_n=len(bnow), src=src,
         bcols=[{"name": c} for c in bcols], backlog_rows=brows, tcols=[{"name": c} for c in tcols], thr_rows=thr_rows,
+        anon=bool(it.Summary.map(privacy.is_placeholder).any()),
         bulk=it.attrs.get("bulk_days", []), cfg=cfg, excl=list(it[~it.valid].excl_reason.value_counts().items()),
         # "<" escapato: il JSON sta dentro un tag <script>
         data_json=Markup(json.dumps(data).replace("<", "\\u003c")),

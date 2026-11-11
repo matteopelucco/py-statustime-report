@@ -69,6 +69,24 @@ Output in `out/`:
 - `items.csv` — una riga per item con eventuale motivo di esclusione e `fonte` (entrambi / solo done / solo all) per l'audit
 - `forecast.csv`, `cycle_forecast.csv`, `throughput.csv`, `backlog_history.csv`
 
+## Titoli riservati (uso con un assistente AI)
+I titoli di issue ed epiche non devono arrivare a un LLM. Gli export reali stanno in `private/raw/` (cartella ignorata da
+git e vietata in lettura all'AI); il resto del progetto lavora su copie anonime, in cui il titolo è sostituito dal
+segnaposto `[[T:CHIAVE]]`. La chiave della issue resta in chiaro.
+
+```bash
+python -m flowmetrics.privacy anonymize      # private/raw/**.csv -> data/**.csv + dizionario private/titles.csv
+python -m flowmetrics.privacy check          # nessun titolo nei file leggibili dall'AI? (esce con 0 se pulito)
+python -m flowmetrics --config config/x.yaml             # report e analisi di lavoro, con segnaposto, in out/
+python -m flowmetrics --config config/x.yaml --reveal    # report e analisi finali, con i titoli, in private/out/
+python -m flowmetrics.privacy reveal analisi.md          # testi scritti a mano o dall'AI -> private/out/
+```
+
+- `require_anonymized: true` nella config fa rifiutare gli export con titoli in chiaro.
+- I valori riservati della config (es. `issue_url` con l'indirizzo interno di Jira) vanno in `private/config/<stesso nome della config>`:
+  sono usati solo con `--reveal`.
+- Gli script stampano solo conteggi, nomi di file e chiavi: mai un titolo.
+
 ## Test
 ```bash
 pytest

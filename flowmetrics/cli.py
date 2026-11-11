@@ -1,6 +1,6 @@
 import argparse, os, re
 import pandas as pd, yaml
-from . import analysis, load, metrics, report
+from . import analysis, load, metrics, privacy, report
 
 
 def report_filename(cfg, first, last, kind="flow_report", ext=".html"):
@@ -21,6 +21,9 @@ def main(argv=None):
     ap.add_argument("--input-all", help="export di TUTTE le issue del periodo, aperte comprese (default: input_all in config; "
                                         "'' per non usarlo)")
     ap.add_argument("--today", help="YYYY-MM-DD (default: oggi)")
+    ap.add_argument("--reveal", action="store_true",
+                    help="report finale con i titoli veri: segnaposto sostituiti in locale con il dizionario di private/, "
+                         "valori riservati da private/config/<nome config>, output in private/out")
     a = ap.parse_args(argv)
     if not os.path.exists(a.config):
         ap.error(f"config non trovata: {a.config} (copiare config.example.yaml in config/config.yaml)")
@@ -30,7 +33,19 @@ def main(argv=None):
     path_all = a.input_all if a.input_all is not None else cfg.get("input_all")
     # "oggi" = fine giornata (anche con --today): le transizioni di quel giorno fanno parte dei dati
     today = (pd.Timestamp(a.today) if a.today else pd.Timestamp.now()).normalize() + pd.Timedelta(days=1) - pd.Timedelta(minutes=1)
-    df = load.read_exports(path, path_all); ev = load.events(df)
+    df = load.read_exports(path, path_all)
+    if a.reveal:
+        cfg = privacy.private_config(cfg, a.config)
+        titles = privacy.load_titles(privacy.private_dir(cfg) / "titles.csv")
+        try:
+            df = privacy.restore_titles(df, titles)
+        except ValueError as e:
+            ap.error(str(e))
+    elif cfg.get("require_anonymized") and not privacy.all_placeholders(df):
+        # rete di sicurezza: con dati reali in ingresso, report e analisi di lavoro conterrebbero i titoli
+        ap.error("la config richiede dati anonimi (require_anonymized) ma gli export contengono titoli in chiaro: "
+                 "lanciare `python -m flowmetrics.privacy anonymize` e usare le copie anonime")
+    ev = load.events(df)
     it = metrics.prepare(df, ev, cfg)
     src = metrics.sources_check(it, cfg, bool(path_all))
     # i trend mensili finiscono con i dati (non con --today): niente mesi vuoti dopo l'export

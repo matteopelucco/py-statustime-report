@@ -7,7 +7,7 @@ ogni frase deve essere verificabile sui dati del report.
 """
 import numpy as np
 import pandas as pd
-from . import kpi, metrics, report
+from . import kpi, metrics, privacy, report
 
 DEFAULTS = {
     "release_share_max": 0.15,      # attesa rilascio oltre questa quota del tempo totale = rilasci da accorciare
@@ -281,6 +281,9 @@ def render(cfg, today, end, df, it, ev, fc, cyc, snap, cmp, src, report_name, pa
     L += [f"# {title}", "",
           f"Dati dal {(p_start or v.prod_date.min()):%d/%m/%Y} al {end:%d/%m/%Y} · generata il {today:%d/%m/%Y} · "
           f"report: `{report_name}`", ""]
+    if it.Summary.map(privacy.is_placeholder).any():
+        L += ["> Versione di lavoro con i titoli nascosti: i segnaposto `[[T:CHIAVE]]` vengono sostituiti in locale "
+              "(`--reveal`) nella versione finale.", ""]
     if not len(mt) or not len(v):
         L += ["Nessuna consegna valida nel periodo: analisi non disponibile."]
         _write(path, L)

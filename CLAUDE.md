@@ -16,6 +16,25 @@ Non usare "status CHANGED TO In Progress DURING": perde le issue gia' avviate pr
 
 Funziona uguale su Mac e Windows (Python 3.10+).
 
+## Dati riservati: i titoli non devono MAI arrivare all'AI
+Titoli di issue ed epiche (colonna `Summary`) e indirizzo interno di Jira sono riservati. Chiavi, stati, tipi, label e nomi
+di progetto no. Regole per l'AI, senza eccezioni:
+- NON leggere, aprire o stampare nulla sotto `private/` (export reali, `titles.csv`, config riservate, report finali): niente
+  Read, cat, grep, ne' script che ne mostrino il contenuto. Divieti anche in `.claude/settings.json`.
+- Lavorare solo sulle copie anonime in `data/` e sugli output in `out/`: al posto del titolo c'e' il segnaposto `[[T:CHIAVE]]`.
+  Nei testi scritti dall'AI (analisi, mail, pagine) citare le issue per chiave o con il segnaposto, mai inventare un titolo.
+- Gli script di `flowmetrics/privacy.py` si possono lanciare: stampano solo conteggi, nomi di file e chiavi. Ogni nuovo
+  script o messaggio d'errore deve rispettare la stessa regola (mai un titolo a video).
+- `require_anonymized: true` in config fa rifiutare alla CLI export con titoli in chiaro. Prima di usare l'AI su dati nuovi:
+  `python -m flowmetrics.privacy anonymize` e poi `python -m flowmetrics.privacy check` (deve uscire con 0).
+
+    private/raw/**.csv   export reali  --anonymize-->  data/**.csv (titoli = segnaposto) + private/titles.csv (dizionario cumulativo)
+    python -m flowmetrics --config <cfg>             # lavoro: out/ con segnaposto, leggibile dall'AI
+    python -m flowmetrics --config <cfg> --reveal    # finale: titoli veri + private/config/<cfg> (es. issue_url), in private/out/
+    python -m flowmetrics.privacy reveal testo.md    # testi scritti a mano o dall'AI -> private/out/ con i titoli
+
+Il ripristino avviene prima del rendering (non per sostituzione nell'HTML): l'escape resta corretto anche con titoli ostili.
+
 ## Cosa risponde (sezioni del report)
 1. Sintesi: in testa gli 8 KPI standard (`flowmetrics/kpi.py`, stessi nell'analisi): consegne/settimana, lead time P50,
    cycle time P50 (affiancati per confrontarli), WIP, rapporto lavoro/attesa (attesa = coda + attesa rilascio),
@@ -48,6 +67,8 @@ Tabelle del report: righe da `report_classes` (+ Tutti = tutti gli item validi).
 - `flowmetrics/analysis.py` analisi testuale in Markdown, file separato (MAI dentro il report): sintesi, le 5 domande,
   dati significativi, attivita' proposte (regole in `actions`, soglie nel blocco `analysis` di config), limiti.
   Ogni frase deve nascere da una regola verificabile sui dati; nuove regole = un test in `tests/test_analysis.py`.
+- `flowmetrics/privacy.py` titoli riservati: `anonymize`, `reveal`, `check` e ripristino per `--reveal` (vedi sopra).
+- `private/` (ignorata da git, vietata all'AI) export reali, dizionario, config riservate, report finali.
 - `flowmetrics/load.py` parsing export; `metrics.py` calcoli (funzioni pure); `report.py` + `templates/report.html.j2` HTML; `cli.py`.
 - `flowmetrics/vendor/` Tabler (CSS, MIT) ed Apache ECharts (JS) incorporati nel report: nessuna dipendenza esterna, si apre offline.
 - `tests/` regole verificate su dati sintetici. Ogni nuova regola = un test.

@@ -228,3 +228,6 @@ __marimo__/
 
 # Configurazioni (dati e regole specifiche): copie di config.example.yaml, mai versionate
 /config/
+
+# Dati riservati: export reali, dizionario dei titoli, report finali. Mai versionare, mai leggibili dall'AI
+/private/
